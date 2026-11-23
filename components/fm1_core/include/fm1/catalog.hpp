@@ -39,6 +39,7 @@ struct Entry {
 Device device_from_product(std::string_view product);
 bool matches(const Entry& entry, std::string_view needle);
 bool works_on_new_chip(const Entry& entry);
+bool works_on_old_chip(const Entry& entry);
 
 // URL relative to the hub root.
 std::string package_url(const Entry& entry);

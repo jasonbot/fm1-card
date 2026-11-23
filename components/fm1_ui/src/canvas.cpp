@@ -7,22 +7,22 @@
 namespace fm1::ui {
 
 Canvas::Canvas() {
-  palette_[0] = 0x0000;   // background
-  palette_[1] = 0xFFFF;   // foreground
-  palette_[2] = 0x8410;   // dim
-  palette_[3] = 0x07FF;   // accent
-  palette_[4] = 0x07E0;   // green
-  palette_[5] = 0xFFE0;   // yellow
-  palette_[6] = 0xF800;   // red
-  palette_[7] = 0x001F;   // blue
-  palette_[8] = 0x4208;
-  palette_[9] = 0xC618;
-  palette_[10] = 0x03EF;
-  palette_[11] = 0xFD20;
-  palette_[12] = 0xF81F;
-  palette_[13] = 0x7BEF;
-  palette_[14] = 0x39E7;
-  palette_[15] = 0x0000;
+  palette_[0] = 0xE71C;   // 0  Palm light gray / background
+  palette_[1] = 0x0000;   // 1  black text
+  palette_[2] = 0x6B4D;   // 2  dim gray
+  palette_[3] = 0x0010;   // 3  navy title bar
+  palette_[4] = 0x0400;   // 4  green
+  palette_[5] = 0xFC00;   // 5  orange
+  palette_[6] = 0x9800;   // 6  red
+  palette_[7] = 0x0008;   // 7  selection (deeper navy)
+  palette_[8] = 0xC618;   // 8  button face / separator
+  palette_[9] = 0x8410;   // 9  bevel shadow
+  palette_[10] = 0xCE79;  // 10 pale blue
+  palette_[11] = 0xFFFF;  // 11 white
+  palette_[12] = 0xEF7D;  // 12 off-white
+  palette_[13] = 0xB5B6;  // 13 mid gray
+  palette_[14] = 0x39E7;  // 14 dark gray
+  palette_[15] = 0x0000;  // 15 black
 }
 
 void Canvas::clear(uint8_t color) {

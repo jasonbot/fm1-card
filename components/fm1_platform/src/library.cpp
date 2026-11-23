@@ -43,7 +43,7 @@ std::string sanitise(std::string_view text) {
 
 }  // namespace
 
-Result<std::vector<catalog::Entry>> Library::page(std::string_view filter,
+Result<std::vector<catalog::Entry>> Library::page(const LibraryFilter& filter,
                                                   std::size_t offset, std::size_t limit) {
   std::vector<catalog::Entry> out;
   if (!storage_.mounted()) return out;
@@ -62,14 +62,17 @@ Result<std::vector<catalog::Entry>> Library::page(std::string_view filter,
       std::fclose(file);
       return std::unexpected(entry.error());
     }
-    if (!catalog::matches(*entry, filter)) continue;
+    if (filter.device && entry->device != *filter.device) continue;
+    if (filter.chip == ChipFilter::New && !catalog::works_on_new_chip(*entry)) continue;
+    if (filter.chip == ChipFilter::Old && !catalog::works_on_old_chip(*entry)) continue;
+    if (!catalog::matches(*entry, filter.text)) continue;
     if (matched++ >= offset) out.push_back(std::move(*entry));
   }
   std::fclose(file);
   return out;
 }
 
-Result<std::size_t> Library::count() {
+Result<std::size_t> Library::count(const LibraryFilter& filter) {
   if (!storage_.mounted()) return 0;
   std::FILE* file = std::fopen(storage_.path(cache_path()).c_str(), "rb");
   if (file == nullptr) return 0;
@@ -81,6 +84,15 @@ Result<std::size_t> Library::count() {
       return std::unexpected(record.error());
     }
     if (!*record) break;
+    auto entry = catalog::decode_record(**record);
+    if (!entry) {
+      std::fclose(file);
+      return std::unexpected(entry.error());
+    }
+    if (filter.device && entry->device != *filter.device) continue;
+    if (filter.chip == ChipFilter::New && !catalog::works_on_new_chip(*entry)) continue;
+    if (filter.chip == ChipFilter::Old && !catalog::works_on_old_chip(*entry)) continue;
+    if (!catalog::matches(*entry, filter.text)) continue;
     ++total;
   }
   std::fclose(file);
@@ -127,8 +139,14 @@ Result<std::vector<LocalPackage>> Library::local_packages() {
       if (!reader.open(path)) continue;
       auto layout = package::inspect(reader);
       if (!layout) continue;
+      std::string display = name.substr(0, name.size() - 5);
+      for (char& c : display) {
+        if (c == '_') c = ' ';
+      }
       out.push_back(LocalPackage{.path = path,
+                                 .name = std::move(display),
                                  .product = layout->product,
+                                 .device = catalog::device_from_product(layout->product),
                                  .size = layout->file_size,
                                  .blocks = static_cast<uint8_t>(layout->blocks)});
     }

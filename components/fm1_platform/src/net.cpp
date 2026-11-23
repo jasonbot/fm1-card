@@ -265,8 +265,15 @@ Result<void> Net::fetch(const std::string& url, const ProgressFn& progress,
 Result<void> Net::refresh_catalog(const ProgressFn& progress) {
   if (storage_ == nullptr) return fail("no storage");
   if (!storage_->mounted()) return fail("no SD card mounted; insert the card and reboot");
+  const auto log = [&](std::string_view text) {
+    (void)storage_->write_text("fm1-card/logs/catalog.log", text);
+  };
+  log("started\n");
   auto connected = ensure_connected();
-  if (!connected) return connected;
+  if (!connected) {
+    log("failed: " + connected.error().message + "\n");
+    return connected;
+  }
   (void)storage_->ensure_dir("fm1-card");
   const auto final_path = storage_->path("fm1-card/catalog.bin");
   const auto temp_path = final_path + ".tmp";
@@ -296,6 +303,7 @@ Result<void> Net::refresh_catalog(const ProgressFn& progress) {
   if (!result) {
     std::fclose(file);
     std::remove(temp_path.c_str());
+    log("failed: " + result.error().message + "\n");
     return result;
   }
   auto finish = parser.finish();
@@ -303,17 +311,21 @@ Result<void> Net::refresh_catalog(const ProgressFn& progress) {
   std::fclose(file);
   if (!write_ok) {
     std::remove(temp_path.c_str());
+    log("failed: could not write the catalog cache\n");
     return fail("could not write the catalog cache");
   }
   if (!finish) {
     std::remove(temp_path.c_str());
+    log("failed: " + finish.error().message + "\n");
     return finish;
   }
   std::remove(final_path.c_str());
   if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
     std::remove(temp_path.c_str());
+    log("failed: cannot replace the catalog cache\n");
     return fail("cannot replace the catalog cache");
   }
+  log("ok: " + std::to_string(entries) + " entries\n");
   ESP_LOGI(kTag, "catalog cached: %u entries", static_cast<unsigned>(entries));
   return {};
 }

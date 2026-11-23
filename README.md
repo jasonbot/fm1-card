@@ -153,9 +153,10 @@ The footer always shows the keys that work on the current screen.
   link, `Esc` closes. `Delete` clears all links.
 - **Clock**: `Space` starts/stops, `+`/`-` change BPM, `T` toggles all
   targets, `Enter` toggles one target.
-- **Library**: `R` refreshes the catalog (Wi-Fi), `/` edits the filter,
-  `Enter` downloads the selected catalog entry. Flash from the Devices pane:
-  select a unit, press `F`, pick the package.
+- **Library**: `R` refreshes the catalog (Wi-Fi), `/` edits the text filter,
+  `T` cycles the device filter (ALL / FM-1 / SMK-37), `C` cycles the chip
+  filter (ALL / new / old), `Enter` downloads the selected catalog entry.
+  Flash from the Devices pane: select a unit, press `F`, pick the package.
 - `F1`…`F4` jump to a pane; `Tab` cycles; `Fn`+`↑`/`↓` pages the library.
 
 ## Layout

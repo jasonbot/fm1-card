@@ -82,7 +82,7 @@ void App::run() {
   xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->clock_loop(); },
                           "fm1-clock", 4096, this, 5, nullptr, 1);
   xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->net_loop(); }, "fm1-net",
-                          8192, this, 2, nullptr, 0);
+                          20480, this, 2, nullptr, 0);
 }
 
 void App::set_message(std::string message, bool error, uint32_t ttl_ms) {
@@ -232,12 +232,31 @@ void App::net_loop() {
 
 void App::refresh_library(bool keep_shift) {
   state_.local = library_.local_packages().value_or(std::vector<platform::LocalPackage>{});
-  auto total = library_.count();
+  if (library_filter_.device) {
+    std::erase_if(state_.local, [&](const platform::LocalPackage& local) {
+      return local.device != *library_filter_.device;
+    });
+  }
+  library_filter_.text = state_.filter;
+  auto total = library_.count(library_filter_);
   catalog_total_ = total.value_or(0);
   const std::size_t page = 60;
   if (!keep_shift && catalog_offset_ > catalog_total_) catalog_offset_ = 0;
-  auto entries = library_.page(state_.filter, catalog_offset_, page);
+  auto entries = library_.page(library_filter_, catalog_offset_, page);
   state_.catalog = entries.value_or(std::vector<catalog::Entry>{});
+  state_.catalog_total = catalog_total_;
+  if (!library_filter_.device) {
+    state_.device_filter = "ALL";
+  } else if (*library_filter_.device == catalog::Device::Fm1) {
+    state_.device_filter = "FM1";
+  } else {
+    state_.device_filter = "SMK";
+  }
+  switch (library_filter_.chip) {
+    case platform::ChipFilter::New: state_.chip_filter = "NEW"; break;
+    case platform::ChipFilter::Old: state_.chip_filter = "OLD"; break;
+    default: state_.chip_filter = "ALL"; break;
+  }
   const int max_index = static_cast<int>(state_.local.size() + state_.catalog.size()) - 1;
   if (state_.selection > max_index) state_.selection = std::max(0, max_index);
   dirty_ = true;
@@ -574,6 +593,27 @@ void App::handle_key(const platform::KeyEvent& event) {
     case 'T':
       if (state_.pane == ui::Pane::Clock) {
         router_.set_clock_all(!router_.any_clock());
+      } else if (state_.pane == ui::Pane::Library) {
+        if (!library_filter_.device) library_filter_.device = catalog::Device::Fm1;
+        else if (*library_filter_.device == catalog::Device::Fm1)
+          library_filter_.device = catalog::Device::Smk37;
+        else library_filter_.device.reset();
+        catalog_offset_ = 0;
+        state_.selection = 0;
+        library_dirty_ = true;
+      }
+      break;
+    case 'c':
+    case 'C':
+      if (state_.pane == ui::Pane::Library) {
+        library_filter_.chip = library_filter_.chip == platform::ChipFilter::All
+                                   ? platform::ChipFilter::New
+                                   : library_filter_.chip == platform::ChipFilter::New
+                                         ? platform::ChipFilter::Old
+                                         : platform::ChipFilter::All;
+        catalog_offset_ = 0;
+        state_.selection = 0;
+        library_dirty_ = true;
       }
       break;
     case '/':

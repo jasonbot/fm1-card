@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,9 +18,19 @@ namespace fm1::platform {
 
 struct LocalPackage {
   std::string path;
+  std::string name;     // filename stem, human-readable fallback
   std::string product;
+  catalog::Device device = catalog::Device::Fm1;
   uint64_t size = 0;
   uint8_t blocks = 0;
+};
+
+enum class ChipFilter : uint8_t { All, New, Old };
+
+struct LibraryFilter {
+  std::string text;
+  std::optional<catalog::Device> device;
+  ChipFilter chip = ChipFilter::All;
 };
 
 class Library {
@@ -28,9 +39,9 @@ class Library {
 
   // Scans the cache for entries matching the filter, returning at most `limit`
   // entries starting at `offset`.
-  Result<std::vector<catalog::Entry>> page(std::string_view filter, std::size_t offset,
+  Result<std::vector<catalog::Entry>> page(const LibraryFilter& filter, std::size_t offset,
                                            std::size_t limit);
-  Result<std::size_t> count();
+  Result<std::size_t> count(const LibraryFilter& filter);
   Result<std::optional<catalog::Entry>> find(std::string_view id);
   Result<std::vector<LocalPackage>> local_packages();
   Result<std::string> package_path(std::string_view id, std::string_view version);

@@ -94,6 +94,12 @@ bool works_on_new_chip(const Entry& entry) {
          tags.find("any chip") != std::string::npos;
 }
 
+bool works_on_old_chip(const Entry& entry) {
+  const auto tags = lower(entry.tags);
+  return tags.find("old chip") != std::string::npos ||
+         tags.find("any chip") != std::string::npos;
+}
+
 std::string package_url(const Entry& entry) {
   // The firmware-zoo feed publishes absolute package URLs. Relative paths are
   // resolved against the zoo root, not any of the older mirrors.

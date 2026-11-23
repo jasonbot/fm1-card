@@ -91,6 +91,7 @@ class App {
   uint64_t message_until_ = 0;
   std::size_t catalog_offset_ = 0;
   std::size_t catalog_total_ = 0;
+  platform::LibraryFilter library_filter_;
 
 };
 
