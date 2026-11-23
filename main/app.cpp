@@ -508,12 +508,15 @@ void App::handle_key(const platform::KeyEvent& event) {
         case ui::Pane::Clock: limit = state_.midi.size(); break;
         case ui::Pane::Library: limit = state_.local.size() + state_.catalog.size(); break;
       }
-      if (state_.pane == ui::Pane::Library && event.fn) {
-        if (delta > 0 && catalog_offset_ + 20 < catalog_total_) {
-          catalog_offset_ += 20;
+      constexpr std::size_t kLibraryPage = 5;
+      if (state_.pane == ui::Pane::Library && event.ctrl) {
+        if (delta > 0 && catalog_offset_ + kLibraryPage < catalog_total_) {
+          catalog_offset_ += kLibraryPage;
+          state_.selection = 0;
           library_dirty_ = true;
-        } else if (delta < 0 && catalog_offset_ >= 20) {
-          catalog_offset_ -= 20;
+        } else if (delta < 0 && catalog_offset_ >= kLibraryPage) {
+          catalog_offset_ -= kLibraryPage;
+          state_.selection = 0;
           library_dirty_ = true;
         }
         break;
@@ -521,8 +524,9 @@ void App::handle_key(const platform::KeyEvent& event) {
       state_.selection = std::clamp(state_.selection + delta, 0, std::max(0, limit - 1));
       if (state_.pane == ui::Pane::Library && delta > 0 &&
           state_.selection + 1 >= static_cast<int>(state_.local.size() + state_.catalog.size()) &&
-          catalog_offset_ + 20 < catalog_total_) {
-        catalog_offset_ += 20;
+          catalog_offset_ + kLibraryPage < catalog_total_) {
+        catalog_offset_ += kLibraryPage;
+        state_.selection = 0;
         library_dirty_ = true;
       }
       break;

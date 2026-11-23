@@ -299,8 +299,8 @@ void Ui::footer(const UiState& state) {
       if (state.editing_filter) {
         hint1 = "TYPE   ENTER apply   ESC cancel";
       } else {
-        hint1 = "Fn ;/. scroll  T dev  C chip";
-        hint2 = "/ filter  R reload  D down  F flash";
+        hint1 = "Fn ;/. select  Ctrl ;/. page";
+        hint2 = "T dev  C chip  /filt  R rel  D dn  F fl";
       }
       break;
   }

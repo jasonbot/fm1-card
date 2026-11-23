@@ -158,8 +158,8 @@ The footer always shows the keys that work on the current screen.
   filter (ALL / new / old), `Enter` downloads the selected catalog entry.
   Flash from the Devices pane: select a unit, press `F`, pick the package.
 - The Cardputer has no dedicated arrow keys: `Fn`+`;` / `Fn`+`.` scroll up
-  and down, `Fn`+`,` / `Fn`+`/` move left and right. `Fn`+Up/Down pages the
-  Library by 20 entries.
+  and down, `Fn`+`,` / `Fn`+`/` move left and right. In the Library, `Ctrl`+
+  Up/Down pages by five entries.
 - `F1`…`F4` jump to a pane; `Tab` cycles; `Fn`+`↑`/`↓` pages the library.
 
 ## Layout
