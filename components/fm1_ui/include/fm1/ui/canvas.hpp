@@ -31,9 +31,9 @@ class Canvas {
   static constexpr int kWidth = 240;
   static constexpr int kHeight = 135;
   static constexpr int kCellW = 6;
-  static constexpr int kCellH = 10;
+  static constexpr int kCellH = 11;
   static constexpr int kCols = kWidth / kCellW;   // 40
-  static constexpr int kRows = kHeight / kCellH;  // 13
+  static constexpr int kRows = kHeight / kCellH;  // 12
 
   Canvas();
   void clear(uint8_t color = 0);
