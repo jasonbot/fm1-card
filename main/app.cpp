@@ -6,6 +6,7 @@
 
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
+#include "esp_netif.h"
 #include "esp_system.h"
 #include <chrono>
 #include <cstdio>
@@ -368,7 +369,7 @@ void App::net_loop() {
 
 void App::refresh_library(bool keep_shift) {
   std::size_t local_total = 0;
-  state_.local = library_.local_packages(64, &local_total)
+  state_.local = library_.local_packages(32, &local_total)
                      .value_or(std::vector<platform::LocalPackage>{});
   state_.local_total = local_total;
   if (library_filter_.device) {
@@ -384,7 +385,7 @@ void App::refresh_library(bool keep_shift) {
   library_filter_.text = state_.filter;
   auto total = library_.count(library_filter_);
   catalog_total_ = total.value_or(0);
-  const std::size_t page = 60;
+  const std::size_t page = 20;
   if (!keep_shift && catalog_offset_ > catalog_total_) catalog_offset_ = 0;
   auto entries = library_.page(library_filter_, catalog_offset_, page);
   state_.catalog = entries.value_or(std::vector<catalog::Entry>{});
@@ -466,6 +467,17 @@ void App::sync_ui() {
   json.reserve(1024);
   json += "{\"app\":\"fm1-card\",\"version\":\"";
   json += esp_app_get_description()->version;
+  json += "\",\"ip\":\"";
+  {
+    char ip[16]{};
+    if (auto* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
+      esp_netif_ip_info_t info{};
+      if (esp_netif_get_ip_info(netif, &info) == ESP_OK) {
+        esp_ip4addr_ntoa(&info.ip, ip, sizeof(ip));
+      }
+    }
+    json += ip;
+  }
   json += "\",\"sd\":";
   json += state_.sd_mounted ? "true" : "false";
   json += ",\"wifi\":\"";

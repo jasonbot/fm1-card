@@ -1,24 +1,22 @@
 # Network API
 
-The device advertises itself over mDNS and answers a small HTTP API while Wi-Fi
+The device answers a small HTTP API while Wi-Fi
 is connected. There is no authentication; treat it as a trusted-LAN service.
 
 ## Discovery
 
-- mDNS hostname: `fm1-card.local`
-- Service: `_fm1card._tcp` on port 80
-- TXT: `app=fm1-card`, `version=<app version>`, `api=/status`, `usb=host`
-- Also advertised as `_http._tcp`
-- UDP broadcast discovery on port **8135**: send `hello` (or `FM1CARD?`);
-  the reply is `fm1-card (on fm1-card);80`
+- UDP broadcast on port **8135**: send `hello` (or `FM1CARD?`).
+- Reply: `fm1-card;<ip>;80`
+- HTTP API then listens at `http://<ip>/`.
 
-Examples:
+Example:
 
 ```sh
-avahi-browse -rt _fm1card._tcp
 printf 'hello' | socat - UDP-DATAGRAM:255.255.255.255:8135,broadcast
-curl http://fm1-card.local/status
 ```
+
+There is deliberately no mDNS dependency: the 512 KB S3 needs the heap for
+the HTTP server and TLS downloads.
 
 ## `GET /status`
 

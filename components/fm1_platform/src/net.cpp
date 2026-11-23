@@ -12,7 +12,6 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-#include "esp_app_desc.h"
 #include "esp_crt_bundle.h"
 #include "esp_event.h"
 #include "esp_http_client.h"
@@ -27,7 +26,6 @@
 
 #include "fm1/package.hpp"
 #include "fm1/platform/file.hpp"
-#include "mdns.h"
 #include "nvs_flash.h"
 
 namespace fm1::platform {
@@ -398,13 +396,21 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
 
 Result<void> Net::start_http() {
   if (http_ != nullptr) return {};
+  const auto log = [&](std::string_view text) {
+    if (storage_ != nullptr && storage_->mounted()) {
+      (void)storage_->write_text("fm1-card/logs/net.log", text);
+    }
+  };
+  start_discovery();
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
   config.max_uri_handlers = 8;
+  config.max_open_sockets = 4;
   config.stack_size = 8192;
   config.lru_purge_enable = true;
   httpd_handle_t server = nullptr;
   if (httpd_start(&server, &config) != ESP_OK) {
+    log("httpd_start failed\n");
     return fail("HTTP server failed");
   }
   http_ = server;
@@ -440,22 +446,7 @@ Result<void> Net::start_http() {
   options.handler = options_handler;
   httpd_register_uri_handler(server, &options);
 
-  esp_err_t err = mdns_init();
-  if (err != ESP_OK) {
-    ESP_LOGW(kTag, "mDNS init failed: %s", esp_err_to_name(err));
-    return {};
-  }
-  mdns_hostname_set("fm1-card");
-  mdns_instance_name_set("fm1-card");
-  mdns_txt_item_t txt[] = {
-      {"app", "fm1-card"},
-      {"version", esp_app_get_description()->version},
-      {"api", "/status"},
-      {"usb", "host"},
-  };
-  mdns_service_add(nullptr, "_fm1card", "_tcp", 80, txt, 4);
-  mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
-  start_discovery();
+  log("http/udp started on 80/8135\n");
   return {};
 }
 
@@ -499,9 +490,15 @@ void Net::discovery_loop() {
     if (got > 0) {
       buffer[got] = '\0';
       if (std::strcmp(buffer, "hello") == 0 || std::strcmp(buffer, "FM1CARD?") == 0) {
+        char ip[16]{};
+        if (auto* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
+          esp_netif_ip_info_t info{};
+          if (esp_netif_get_ip_info(netif, &info) == ESP_OK) {
+            esp_ip4addr_ntoa(&info.ip, ip, sizeof(ip));
+          }
+        }
         char reply[96]{};
-        const int length = std::snprintf(reply, sizeof(reply),
-                                         "fm1-card (on fm1-card);80\n");
+        const int length = std::snprintf(reply, sizeof(reply), "fm1-card;%s;80\n", ip);
         sendto(discovery_socket_, reply, std::max(0, length), 0,
                reinterpret_cast<sockaddr*>(&from), from_len);
       }

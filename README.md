@@ -46,8 +46,8 @@ for the power finding that matters before you plug anything in.
 
 ## Network API
 
-While Wi-Fi is connected, the device is discoverable as `fm1-card.local`
-(`_fm1card._tcp`) and through UDP discovery on port `8135`. It exposes:
+While Wi-Fi is connected, the device answers UDP discovery on port `8135`
+(`hello` → `fm1-card;<ip>;80`). It exposes an HTTP API at that address:
 
 - `GET /status` — device, USB-MIDI, clock and library state
 - `GET /firmwares` — installed packages with sizes and sidecar SHA-256
