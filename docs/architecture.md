@@ -56,7 +56,7 @@ flowchart TB
 | `ui` | 4 | canvas, keyboard polling, app state |
 | `flash` | 3 | one flash operation at a time, claims one port |
 | `clock` | 5 | tick deadline, posts packets to `usb` |
-| `net` | 2 | Wi-Fi, catalog fetch, package download |
+| `net` | 2 | Wi-Fi scan/connect, catalog fetch, package download |
 
 All USB API calls happen on the `usb` task. Other tasks post `TxPacket`
 items to a queue; the USB task drains it after every `tuh_task` pass. This

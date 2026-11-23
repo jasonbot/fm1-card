@@ -28,6 +28,8 @@ Returns current state:
   "version": "0.1.1",
   "sd": true,
   "wifi": "connected",
+  "ssid": "scheirer-eero",
+  "rssi": -78,
   "devices": [
     {"slot": 0, "path": "h0p1", "identity": "FM-1_916", "clock": false}
   ],

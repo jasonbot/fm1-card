@@ -29,7 +29,7 @@ instead of asking a desktop to do it.
 - **Runs a MIDI clock**: 20–300 BPM, 24 PPQN, start/stop, to every selected
   device.
 - **Works from SD first**: catalog cache, packages, backups and config all
-  live on the card. Wi-Fi is optional.
+  live on the card. Wi-Fi is optional and can be configured on-device.
 
 The UI is a 240×135 text console driven by the 56-key keyboard. No touch, no
 LVGL, no PSRAM.
@@ -150,9 +150,11 @@ It creates `fm1-card/{firmwares,backups,logs}`, writes `config.json` and a
 short on-card README, and copies any `*.fwsc` from `--import`. Existing
 config and packages are kept unless `--force` is given.
 
-`config.json` is read once at boot. After editing it, power-cycle the
-Cardputer; a running app will not pick up the new SSID. The header shows
-`WIFI..` while connecting, `WIFI` when connected, and `WIFI!` on failure.
+`config.json` is read at boot. You can also configure Wi-Fi on the device:
+open the **SYS** pane and press `W`, pick a network, type the password, and
+press Enter. The firmware writes `config.json` and reconnects immediately;
+no reboot is needed. The header shows `WIFI..` while connecting, `WIFI` when
+connected, and `WIFI!` on failure.
 
 For Wi-Fi, either edit `config.json` or rerun with credentials (prefer the
 environment/prompt over the command-line flag so the password is not in your
@@ -174,6 +176,8 @@ The footer always shows the keys that work on the current screen.
   link, `Esc` closes. `Delete` clears all links.
 - **Clock**: `Space` starts/stops, `+`/`-` change BPM, `T` toggles all
   targets, `Enter` toggles one target.
+- **System**: shows SD, Wi-Fi, SSID, IP, signal and battery; `W` opens the
+  Wi-Fi scanner/password dialog (`R` rescans, `Esc` cancels, `Enter` selects).
 - **Library**: `R` refreshes the catalog (Wi-Fi), `/` edits the text filter,
   `T` cycles the device filter (ALL / FM-1 / SMK-37), `C` cycles the chip
   filter (ALL / new / old) on FM-1 and the variant filter (ALL / Pro /
@@ -186,7 +190,7 @@ The footer always shows the keys that work on the current screen.
 - The Cardputer has no dedicated arrow keys: `Fn`+`;` / `Fn`+`.` scroll up
   and down, `Fn`+`,` / `Fn`+`/` move left and right. In the Library, `Ctrl`+
   Up/Down pages by five entries.
-- `F1`…`F4` jump to a pane; `Tab` cycles; `Fn`+`↑`/`↓` pages the library.
+- `F1`…`F5` jump to a pane; `Tab` cycles; `Fn`+`↑`/`↓` pages the library.
 
 ## Layout
 

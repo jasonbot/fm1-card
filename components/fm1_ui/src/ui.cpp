@@ -50,10 +50,10 @@ void Ui::button(int x, int y, int w, int h, std::string_view label, bool active)
 }
 
 void Ui::tabs(const UiState& state) {
-  static constexpr const char* kNames[4] = {"DEV", "ROUTE", "CLOCK", "LIB"};
-  constexpr int kWidth = 58;
-  for (int i = 0; i < 4; ++i) {
-    button(i * 61, 11, kWidth, 11, kNames[i], static_cast<int>(state.pane) == i);
+  static constexpr const char* kNames[5] = {"DEV", "ROUTE", "CLOCK", "LIB", "SYS"};
+  constexpr int kWidth = 47;
+  for (int i = 0; i < 5; ++i) {
+    button(i * 48, 11, kWidth, 11, kNames[i], static_cast<int>(state.pane) == i);
   }
 }
 
@@ -227,6 +227,39 @@ void Ui::library(const UiState& state, int, int rows) {
   }
 }
 
+void Ui::system(const UiState& state) {
+  canvas_.fill(0, 22, 240, 11, 3);
+  canvas_.text(0, 2, "SYSTEM", 11);
+  canvas_.text(0, 3, "SD CARD", 2);
+  canvas_.textf(12, 3, state.sd_mounted ? 4 : 6, "%s",
+                state.sd_mounted ? "mounted at /sdcard" : "NOT MOUNTED");
+
+  const char* wifi = "unconfigured";
+  switch (state.wifi_state) {
+    case platform::WifiState::Connected: wifi = "connected"; break;
+    case platform::WifiState::Connecting: wifi = "connecting"; break;
+    case platform::WifiState::Failed: wifi = "failed"; break;
+    default: break;
+  }
+  canvas_.text(0, 5, "WI-FI", 2);
+  canvas_.text(12, 5, wifi, state.wifi_state == platform::WifiState::Connected ? 4 : 1);
+  canvas_.text(0, 6, "NETWORK", 2);
+  canvas_.text_clipped(12, 6, 27, state.ssid.empty() ? "(none)" : state.ssid, 1);
+  canvas_.text(0, 7, "IP", 2);
+  canvas_.text(12, 7, state.ip.empty() ? "(no address)" : state.ip, 1);
+  canvas_.text(0, 8, "SIGNAL", 2);
+  if (state.rssi > -127) {
+    const int percent = std::clamp((state.rssi + 100) * 2, 0, 100);
+    canvas_.textf(12, 8, 1, "%d dBm  %d%%", state.rssi, percent);
+  } else {
+    canvas_.text(12, 8, "(not connected)", 2);
+  }
+  canvas_.text(0, 9, "BATTERY", 2);
+  if (state.battery >= 0) canvas_.textf(12, 9, 1, "%d%%", state.battery);
+  else canvas_.text(12, 9, "unknown", 2);
+  canvas_.text(0, 10, "W opens Wi-Fi setup", 5);
+}
+
 void Ui::flash(const UiState& state) {
   if (!state.flash.running && !state.flash.error) return;
   canvas_.fill(0, 22, 240, 88, 0);
@@ -334,6 +367,10 @@ void Ui::footer(const UiState& state) {
         hint2 = "T dev C chip H hoard /filt R rel";
       }
       break;
+    case Pane::System:
+      hint1 = "W connect Wi-Fi";
+      hint2 = "TAB pane";
+      break;
   }
   canvas_.text_clipped(0, 10, 40, hint1, 1);
   canvas_.text_clipped(0, 11, 40, hint2, 2);
@@ -347,6 +384,7 @@ void Ui::draw(const UiState& state) {
     case Pane::Routes: routes(state, 3, 6); break;
     case Pane::Clock: clock(state, 0, 0); break;
     case Pane::Library: library(state, 3, 5); break;
+    case Pane::System: system(state); break;
   }
   flash(state);
   popup(state);

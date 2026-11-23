@@ -31,14 +31,16 @@ class App {
   void net_loop();
 
  private:
-  enum class NetCommand { Start, Refresh, Download, Hoard };
+  enum class NetCommand { Start, Refresh, Download, Hoard, WifiScan, WifiConnect };
   struct NetJob {
     NetCommand command = NetCommand::Start;
     catalog::Entry entry;
     std::string destination;
+    std::string ssid;
+    std::string password;
   };
 
-  enum class PopupKind { None, Packages, Sinks, MscActions, HoardConfirm };
+  enum class PopupKind { None, Packages, Sinks, MscActions, HoardConfirm, WifiNetworks, WifiPassword };
   struct Popup {
     PopupKind kind = PopupKind::None;
     std::string title;
@@ -50,6 +52,7 @@ class App {
 
   void handle_key(const platform::KeyEvent& event);
   void handle_popup_key(const platform::KeyEvent& event);
+  void open_wifi_dialog();
   void sync_ui();
   void refresh_library(bool keep_shift = false);
   void set_message(std::string message, bool error = false, uint32_t ttl_ms = 6000);
@@ -105,6 +108,13 @@ class App {
   std::size_t catalog_offset_ = 0;
   std::size_t catalog_total_ = 0;
   platform::LibraryFilter library_filter_;
+
+  std::mutex wifi_scan_lock_;
+  std::vector<platform::WifiNetwork> wifi_networks_;
+  bool wifi_scan_running_ = false;
+  std::string wifi_scan_error_;
+  std::string wifi_ssid_;
+  std::string wifi_password_;
 
 };
 

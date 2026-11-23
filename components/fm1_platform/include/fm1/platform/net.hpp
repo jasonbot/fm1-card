@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "fm1/catalog.hpp"
 #include "fm1/platform/board.hpp"
@@ -25,6 +26,12 @@ struct NetProgress {
 
 enum class WifiState : uint8_t { Unconfigured, Connecting, Connected, Failed };
 
+struct WifiNetwork {
+  std::string ssid;
+  int rssi = -127;
+  bool secure = true;
+};
+
 class Net {
  public:
   using ProgressFn = std::function<void(const NetProgress&)>;
@@ -42,8 +49,17 @@ class Net {
   [[nodiscard]] std::string status_json() const;
   [[nodiscard]] bool wifi_connected() const;
   [[nodiscard]] bool wifi_configured() const { return configured_.load(); }
+  [[nodiscard]] bool wifi_reconfiguring() const { return reconfiguring_.load(); }
   [[nodiscard]] WifiState wifi_state() const { return state_.load(); }
   [[nodiscard]] std::string wifi_error() const;
+  [[nodiscard]] std::string wifi_ssid() const;
+  [[nodiscard]] std::string local_ip() const;
+  [[nodiscard]] int wifi_rssi() const;
+  // Scans visible 2.4 GHz networks. Blocks for a few seconds; call from the
+  // network task, never the UI task.
+  Result<std::vector<WifiNetwork>> scan_networks();
+  // Applies new credentials and reconnects without a reboot.
+  Result<void> apply_wifi(const Config& config);
   void note_connected();
   void note_disconnected();
   void stop();
@@ -58,6 +74,7 @@ class Net {
  private:
   Result<void> fetch(const std::string& url, const ProgressFn& progress,
                      const std::function<bool(std::span<const char>)>& sink);
+  Result<void> ensure_wifi_driver();
   Result<void> connect_wifi();
   Result<void> ensure_connected();
   Result<void> start_http();
@@ -85,6 +102,8 @@ class Net {
   std::atomic<bool> configured_{false};
   std::atomic<bool> library_changed_{false};
   bool started_ = false;
+  bool driver_ready_ = false;
+  std::atomic<bool> reconfiguring_{false};
 };
 
 }  // namespace fm1::platform

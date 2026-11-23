@@ -94,7 +94,7 @@ void App::run() {
                       heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
     (void)storage_.write_text("fm1-card/logs/boot.log", boot);
   }
-  queue_net({.command = NetCommand::Start, .entry = {}, .destination = {}});
+  queue_net({.command = NetCommand::Start, .entry = {}, .destination = {}, .ssid = {}, .password = {}});
 
   xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->ui_loop(); }, "fm1-ui",
                           8192, this, 4, nullptr, 1);
@@ -191,8 +191,7 @@ void App::net_loop() {
           break;
         }
         if (config->ssid.empty()) {
-          set_message("No Wi-Fi configured: edit fm1-card/config.json, then reboot", false,
-                      15'000);
+          set_message("No Wi-Fi configured: open SYSTEM and press W", false, 15'000);
           (void)net_.start(storage_, *config);
           break;
         }
@@ -362,6 +361,47 @@ void App::net_loop() {
         }
         break;
       }
+      case NetCommand::WifiScan: {
+        set_message("Wi-Fi: scanning...", false, 30'000);
+        auto scan = net_.scan_networks();
+        {
+          std::lock_guard lock(wifi_scan_lock_);
+          wifi_scan_running_ = false;
+          if (scan) {
+            wifi_networks_ = std::move(*scan);
+            wifi_scan_error_.clear();
+          } else {
+            wifi_networks_.clear();
+            wifi_scan_error_ = scan.error().message;
+          }
+        }
+        dirty_ = true;
+        break;
+      }
+      case NetCommand::WifiConnect: {
+        set_message("Wi-Fi: connecting to \"" + job.ssid + "\"...", false, 30'000);
+        auto loaded = platform::load_config(storage_);
+        platform::Config config = loaded ? *loaded : platform::Config{};
+        config.ssid = job.ssid;
+        config.password = job.password;
+        if (storage_.mounted()) {
+          auto saved = platform::save_config(storage_, config);
+          if (!saved) {
+            set_message("Wi-Fi config: " + saved.error().message, true, 15'000);
+            break;
+          }
+        } else {
+          set_message("Wi-Fi config not saved: no SD card", true, 15'000);
+        }
+        auto applied = net_.apply_wifi(config);
+        if (!applied) {
+          set_message("Wi-Fi: " + applied.error().message, true, 20'000);
+        } else {
+          library_dirty_ = true;
+          set_message("Wi-Fi connected: " + job.ssid, false, 10'000);
+        }
+        break;
+      }
     }
     dirty_ = true;
   }
@@ -440,6 +480,9 @@ void App::sync_ui() {
   state_.flash = flash_.status();
   state_.wifi = net_.wifi_connected();
   state_.wifi_state = net_.wifi_state();
+  state_.ssid = net_.wifi_ssid();
+  state_.ip = net_.local_ip();
+  state_.rssi = net_.wifi_rssi();
   state_.sd_mounted = storage_.mounted();
   state_.battery = battery_.percent();
   {
@@ -457,6 +500,33 @@ void App::sync_ui() {
     state_.hoard_failed = hoard_.failed;
     state_.hoard_current = hoard_.current;
     state_.hoard_percent = hoard_.percent;
+  }
+  if (popup_.kind == PopupKind::WifiNetworks) {
+    std::lock_guard lock(wifi_scan_lock_);
+    popup_.items.clear();
+    if (wifi_scan_running_) {
+      popup_.items.push_back("Scanning...");
+    } else if (!wifi_scan_error_.empty()) {
+      popup_.items.push_back(wifi_scan_error_);
+    } else if (wifi_networks_.empty()) {
+      popup_.items.push_back("No networks found");
+      popup_.items.push_back("R rescan");
+    } else {
+      for (const auto& network : wifi_networks_) {
+        char line[48]{};
+        std::snprintf(line, sizeof(line), "%c %s  %d", network.secure ? '*' : ' ',
+                      network.ssid.c_str(), network.rssi);
+        popup_.items.emplace_back(line);
+      }
+    }
+    popup_.selection = std::clamp(
+        popup_.selection, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
+  } else if (popup_.kind == PopupKind::WifiPassword) {
+    popup_.title = "WI-FI: " + wifi_ssid_;
+    popup_.items.clear();
+    popup_.items.push_back(std::string(wifi_password_.size(), '*') + "_");
+    popup_.items.push_back("ENTER connect   ESC back");
+    popup_.selection = 0;
   }
   state_.popup = popup_.kind != PopupKind::None;
   state_.popup_title = popup_.title;
@@ -487,7 +557,8 @@ void App::sync_ui() {
     case platform::WifiState::Failed: json += "failed"; break;
     default: json += "unconfigured"; break;
   }
-  json += "\",\"devices\":[";
+  json += "\",\"ssid\":\"" + state_.ssid + "\",\"rssi\":" +
+          std::to_string(state_.rssi) + ",\"devices\":[";
   char item[192]{};
   for (std::size_t i = 0; i < state_.midi.size(); ++i) {
     const auto& port = state_.midi[i];
@@ -521,8 +592,8 @@ void App::sync_ui() {
 
 void App::cycle_pane(int delta) {
   int pane = static_cast<int>(state_.pane) + delta;
-  if (pane < 0) pane = 3;
-  if (pane > 3) pane = 0;
+  if (pane < 0) pane = 4;
+  if (pane > 4) pane = 0;
   state_.pane = static_cast<ui::Pane>(pane);
   state_.selection = 0;
   state_.editing_filter = false;
@@ -611,6 +682,21 @@ void App::open_msc_actions(int slot) {
   dirty_ = true;
 }
 
+void App::open_wifi_dialog() {
+  popup_ = {};
+  popup_.kind = PopupKind::WifiNetworks;
+  popup_.title = "WI-FI NETWORKS";
+  popup_.selection = 0;
+  {
+    std::lock_guard lock(wifi_scan_lock_);
+    wifi_networks_.clear();
+    wifi_scan_error_.clear();
+    wifi_scan_running_ = true;
+  }
+  queue_net({.command = NetCommand::WifiScan, .entry = {}, .destination = {}, .ssid = {}, .password = {}});
+  dirty_ = true;
+}
+
 void App::run_popup_action() {
   if (popup_.kind == PopupKind::Packages) {
     if (popup_.selection < 0 ||
@@ -639,7 +725,7 @@ void App::run_popup_action() {
     dirty_ = true;
   } else if (popup_.kind == PopupKind::HoardConfirm) {
     if (popup_.selection == 0) {
-      queue_net({.command = NetCommand::Hoard, .entry = {}, .destination = {}});
+      queue_net({.command = NetCommand::Hoard, .entry = {}, .destination = {}, .ssid = {}, .password = {}});
       set_message("HOARD starting...", false, 10'000);
     }
     popup_ = {};
@@ -669,6 +755,67 @@ void App::start_flash(platform::FlashKind kind, uint8_t slot, const std::string&
 
 void App::handle_popup_key(const platform::KeyEvent& event) {
   if (event.kind != platform::KeyKind::Press) return;
+  if (popup_.kind == PopupKind::WifiNetworks) {
+    if (event.code == 0x29) {
+      popup_ = {};
+      dirty_ = true;
+      return;
+    }
+    if (event.code == 0x52 || event.code == 0x51) {
+      const int delta = event.code == 0x52 ? -1 : 1;
+      popup_.selection = std::clamp(popup_.selection + delta, 0,
+                                    std::max(0, static_cast<int>(popup_.items.size()) - 1));
+      dirty_ = true;
+      return;
+    }
+    if (event.character == 'r' || event.character == 'R') {
+      open_wifi_dialog();
+      return;
+    }
+    if (event.code == 0x28) {
+      std::lock_guard lock(wifi_scan_lock_);
+      if (!wifi_scan_running_ && wifi_scan_error_.empty() &&
+          popup_.selection < static_cast<int>(wifi_networks_.size())) {
+        wifi_ssid_ = wifi_networks_[static_cast<std::size_t>(popup_.selection)].ssid;
+        wifi_password_.clear();
+        popup_.kind = PopupKind::WifiPassword;
+        popup_.selection = 0;
+        dirty_ = true;
+      }
+    }
+    return;
+  }
+  if (popup_.kind == PopupKind::WifiPassword) {
+    if (event.code == 0x29) {
+      popup_.kind = PopupKind::WifiNetworks;
+      popup_.selection = std::clamp(popup_.selection, 0,
+                                    std::max(0, static_cast<int>(popup_.items.size()) - 1));
+      dirty_ = true;
+      return;
+    }
+    if (event.code == 0x2A) {
+      if (!wifi_password_.empty()) wifi_password_.pop_back();
+      dirty_ = true;
+      return;
+    }
+    if (event.code == 0x28) {
+      queue_net({.command = NetCommand::WifiConnect,
+                 .entry = {},
+                 .destination = {},
+                 .ssid = wifi_ssid_,
+                 .password = wifi_password_});
+      popup_ = {};
+      wifi_password_.clear();
+      dirty_ = true;
+      return;
+    }
+    if (event.character >= 32 && event.character < 127 &&
+        wifi_password_.size() < 63) {
+      wifi_password_.push_back(event.character);
+      dirty_ = true;
+    }
+    return;
+  }
   if (event.code == 0x29) {  // Esc
     popup_ = {};
     dirty_ = true;
@@ -734,6 +881,7 @@ void App::handle_key(const platform::KeyEvent& event) {
     case 0x3B: state_.pane = ui::Pane::Routes; state_.selection = 0; break;
     case 0x3C: state_.pane = ui::Pane::Clock; state_.selection = 0; break;
     case 0x3D: state_.pane = ui::Pane::Library; state_.selection = 0; break;
+    case 0x3E: state_.pane = ui::Pane::System; state_.selection = 0; break;
     case 0x2B: cycle_pane(1); break;
     case 0x29:
       if (clock_.running()) {
@@ -751,6 +899,7 @@ void App::handle_key(const platform::KeyEvent& event) {
         case ui::Pane::Routes:
         case ui::Pane::Clock: limit = state_.midi.size(); break;
         case ui::Pane::Library: limit = state_.local.size() + state_.catalog.size(); break;
+        case ui::Pane::System: limit = 0; break;
       }
       constexpr std::size_t kLibraryPage = 5;
       if (state_.pane == ui::Pane::Library && event.ctrl) {
@@ -803,7 +952,9 @@ void App::handle_key(const platform::KeyEvent& event) {
             } else {
               queue_net({.command = NetCommand::Download,
                          .entry = state_.catalog[index],
-                         .destination = *path});
+                         .destination = *path,
+                         .ssid = {},
+                         .password = {}});
               set_message("Download queued");
             }
           }
@@ -882,7 +1033,7 @@ void App::handle_key(const platform::KeyEvent& event) {
     case 'r':
     case 'R':
       if (state_.pane == ui::Pane::Library) {
-        queue_net({.command = NetCommand::Refresh, .entry = {}, .destination = {}});
+        queue_net({.command = NetCommand::Refresh, .entry = {}, .destination = {}, .ssid = {}, .password = {}});
         set_message(net_.wifi_connected() ? "Refreshing catalog..."
                                           : "Wi-Fi: connecting...", false, 30'000);
       }
@@ -912,6 +1063,10 @@ void App::handle_key(const platform::KeyEvent& event) {
           state_.selection < static_cast<int>(state_.midi.size())) {
         open_packages(state_.midi[static_cast<std::size_t>(state_.selection)].slot);
       }
+      break;
+    case 'w':
+    case 'W':
+      if (state_.pane == ui::Pane::System) open_wifi_dialog();
       break;
     case 'm':
     case 'M':

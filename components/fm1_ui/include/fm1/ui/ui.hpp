@@ -15,7 +15,7 @@
 
 namespace fm1::ui {
 
-enum class Pane : uint8_t { Devices, Routes, Clock, Library };
+enum class Pane : uint8_t { Devices, Routes, Clock, Library, System };
 
 struct UiState {
   Pane pane = Pane::Devices;
@@ -42,6 +42,9 @@ struct UiState {
   bool wifi = false;
   bool sd_mounted = false;
   platform::WifiState wifi_state = platform::WifiState::Unconfigured;
+  std::string ip;
+  std::string ssid;
+  int rssi = -127;
   int battery = -1;
   std::string message;
   bool message_error = false;
@@ -72,6 +75,7 @@ class Ui {
   void routes(const UiState& state, int first_row, int rows);
   void clock(const UiState& state, int first_row, int rows);
   void library(const UiState& state, int first_row, int rows);
+  void system(const UiState& state);
   void flash(const UiState& state);
   void popup(const UiState& state);
   void hoard(const UiState& state);

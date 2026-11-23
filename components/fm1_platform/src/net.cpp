@@ -40,12 +40,10 @@ void wifi_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
   auto* net = static_cast<Net*>(arg);
   auto group = static_cast<EventGroupHandle_t>(net->event_group());
   (void)net;
-  if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-    esp_wifi_connect();
-  } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+  if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     xEventGroupClearBits(group, kWifiConnected | kIp4);
     net->note_disconnected();
-    esp_wifi_connect();
+    if (net->wifi_configured() && !net->wifi_reconfiguring()) esp_wifi_connect();
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     xEventGroupSetBits(group, kWifiConnected | kIp4);
     net->note_connected();
@@ -191,69 +189,82 @@ Result<void> Net::start(Storage& storage, const Config& config) {
   catalog_url_ = config.catalog_url;
   ssid_ = config.ssid;
   configured_.store(!ssid_.empty());
+  if (auto ready = ensure_wifi_driver(); !ready) {
+    state_.store(WifiState::Failed);
+    return ready;
+  }
   if (ssid_.empty()) {
     state_.store(WifiState::Unconfigured);
-    ESP_LOGW(kTag, "no Wi-Fi SSID configured; SD-only mode");
+    ESP_LOGW(kTag, "no Wi-Fi SSID configured; SD-only until set in SYSTEM");
     return {};
   }
-  state_.store(WifiState::Connecting);
-  event_group_ = xEventGroupCreate();
-  if (event_group_ == nullptr) return fail("no Wi-Fi event group");
+  return apply_wifi(config);
+}
 
+Result<void> Net::ensure_wifi_driver() {
+  if (driver_ready_) return {};
+  if (event_group_ == nullptr) {
+    event_group_ = xEventGroupCreate();
+    if (event_group_ == nullptr) return fail("no Wi-Fi event group");
+  }
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     nvs_flash_erase();
     err = nvs_flash_init();
   }
-  if (err != ESP_OK) {
-    state_.store(WifiState::Failed);
-    return fail("NVS init failed");
-  }
-
+  if (err != ESP_OK) return fail("NVS init failed");
   err = esp_netif_init();
-  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-    state_.store(WifiState::Failed);
-    return fail("netif init failed");
-  }
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return fail("netif init failed");
   err = esp_event_loop_create_default();
-  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-    state_.store(WifiState::Failed);
-    return fail("event loop failed");
-  }
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return fail("event loop failed");
   esp_netif_create_default_wifi_sta();
-
   wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
   err = esp_wifi_init(&init);
-  if (err != ESP_OK) {
-    state_.store(WifiState::Failed);
-    return fail("Wi-Fi init failed");
-  }
-  esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event, this, nullptr);
-  esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event, this, nullptr);
+  if (err != ESP_OK) return fail("Wi-Fi init failed");
+  esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event, this,
+                                      nullptr);
+  esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event, this,
+                                      nullptr);
+  err = esp_wifi_set_mode(WIFI_MODE_STA);
+  if (err != ESP_OK) return fail("Wi-Fi mode failed");
+  err = esp_wifi_start();
+  if (err != ESP_OK) return fail("Wi-Fi start failed");
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  driver_ready_ = true;
+  started_ = true;
+  return {};
+}
 
+Result<void> Net::apply_wifi(const Config& config) {
+  ssid_ = config.ssid;
+  configured_.store(!ssid_.empty());
+  if (auto ready = ensure_wifi_driver(); !ready) {
+    state_.store(WifiState::Failed);
+    return ready;
+  }
+  if (ssid_.empty()) {
+    reconfiguring_.store(true);
+    (void)esp_wifi_disconnect();
+    reconfiguring_.store(false);
+    state_.store(WifiState::Unconfigured);
+    return {};
+  }
   wifi_config_t wifi{};
-  std::strncpy(reinterpret_cast<char*>(wifi.sta.ssid), config.ssid.c_str(),
+  std::strncpy(reinterpret_cast<char*>(wifi.sta.ssid), ssid_.c_str(),
                sizeof(wifi.sta.ssid) - 1);
   std::strncpy(reinterpret_cast<char*>(wifi.sta.password), config.password.c_str(),
                sizeof(wifi.sta.password) - 1);
-  wifi.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-  err = esp_wifi_set_mode(WIFI_MODE_STA);
-  if (err != ESP_OK) {
-    state_.store(WifiState::Failed);
-    return fail("Wi-Fi mode failed");
-  }
-  err = esp_wifi_set_config(WIFI_IF_STA, &wifi);
+  wifi.sta.threshold.authmode =
+      config.password.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+  reconfiguring_.store(true);
+  (void)esp_wifi_disconnect();
+  const esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &wifi);
+  reconfiguring_.store(false);
   if (err != ESP_OK) {
     state_.store(WifiState::Failed);
     return fail("Wi-Fi config failed");
   }
-  err = esp_wifi_start();
-  if (err != ESP_OK) {
-    state_.store(WifiState::Failed);
-    return fail("Wi-Fi start failed");
-  }
-  esp_wifi_set_ps(WIFI_PS_NONE);
-  started_ = true;
+  state_.store(WifiState::Connecting);
   auto connected = connect_wifi();
   if (!connected) {
     state_.store(WifiState::Failed);
@@ -263,8 +274,67 @@ Result<void> Net::start(Storage& storage, const Config& config) {
   }
   state_.store(WifiState::Connected);
   auto services = start_http();
-  if (!services) ESP_LOGW(kTag, "HTTP/mDNS: %s", services.error().message.c_str());
+  if (!services) ESP_LOGW(kTag, "HTTP: %s", services.error().message.c_str());
   return {};
+}
+
+Result<std::vector<WifiNetwork>> Net::scan_networks() {
+  if (auto ready = ensure_wifi_driver(); !ready) return fail(ready.error().message);
+  wifi_scan_config_t scan{};
+  scan.show_hidden = false;
+  const esp_err_t err = esp_wifi_scan_start(&scan, true);
+  if (err != ESP_OK) return fail("Wi-Fi scan failed");
+  uint16_t count = 0;
+  if (esp_wifi_scan_get_ap_num(&count) != ESP_OK) return fail("Wi-Fi scan empty");
+  count = std::min<uint16_t>(count, 32);
+  std::vector<wifi_ap_record_t> records(count);
+  if (count > 0 && esp_wifi_scan_get_ap_records(&count, records.data()) != ESP_OK) {
+    return fail("Wi-Fi scan read failed");
+  }
+  records.resize(count);
+  std::vector<WifiNetwork> networks;
+  for (const auto& record : records) {
+    const auto length = strnlen(reinterpret_cast<const char*>(record.ssid),
+                                sizeof(record.ssid));
+    if (length == 0) continue;
+    const std::string name(reinterpret_cast<const char*>(record.ssid), length);
+    const bool known = std::any_of(networks.begin(), networks.end(),
+                                   [&](const WifiNetwork& network) {
+                                     return network.ssid == name;
+                                   });
+    if (known) continue;
+    networks.push_back({name, record.rssi, record.authmode != WIFI_AUTH_OPEN});
+  }
+  std::sort(networks.begin(), networks.end(),
+            [](const WifiNetwork& a, const WifiNetwork& b) { return a.rssi > b.rssi; });
+  return networks;
+}
+
+std::string Net::wifi_ssid() const {
+  wifi_ap_record_t ap{};
+  if (wifi_connected() && esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+    const auto length = strnlen(reinterpret_cast<const char*>(ap.ssid), sizeof(ap.ssid));
+    return std::string(reinterpret_cast<const char*>(ap.ssid), length);
+  }
+  return ssid_;
+}
+
+std::string Net::local_ip() const {
+  if (auto* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
+    esp_netif_ip_info_t info{};
+    if (esp_netif_get_ip_info(netif, &info) == ESP_OK && info.ip.addr != 0) {
+      char ip[16]{};
+      esp_ip4addr_ntoa(&info.ip, ip, sizeof(ip));
+      return ip;
+    }
+  }
+  return {};
+}
+
+int Net::wifi_rssi() const {
+  wifi_ap_record_t ap{};
+  if (wifi_connected() && esp_wifi_sta_get_ap_info(&ap) == ESP_OK) return ap.rssi;
+  return -127;
 }
 
 esp_err_t Net::firmware_info(httpd_req_t* request) {
@@ -673,7 +743,7 @@ void Net::note_disconnected() {
 
 Result<void> Net::ensure_connected() {
   if (!configured_.load()) {
-    return fail("Wi-Fi is not configured; edit fm1-card/config.json and reboot");
+    return fail("Wi-Fi is not configured; open SYSTEM and press W");
   }
   if (wifi_connected()) {
     state_.store(WifiState::Connected);
@@ -700,6 +770,7 @@ void Net::stop() {
     esp_wifi_stop();
     esp_wifi_deinit();
     started_ = false;
+    driver_ready_ = false;
   }
 }
 

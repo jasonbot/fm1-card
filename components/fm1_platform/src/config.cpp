@@ -15,6 +15,24 @@ constexpr const char* kTemplate =
     "  \"catalog\": \"https://www.jasonscheirer.com/firmware-zoo/firmwares.json\"\n"
     "}\n";
 
+std::string json_escape(std::string_view text) {
+  std::string out;
+  out.reserve(text.size() + 8);
+  for (const char c : text) {
+    switch (c) {
+      case '"': out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (static_cast<unsigned char>(c) >= 0x20) out.push_back(c);
+        break;
+    }
+  }
+  return out;
+}
+
 std::string value_of(const lwjson_token_t* token) {
   if (token == nullptr) return {};
   size_t length = 0;
@@ -53,6 +71,21 @@ Result<Config> load_config(Storage& storage) {
 Result<void> write_config_template(Storage& storage) {
   (void)storage.ensure_dir("fm1-card");
   return storage.write_text(kConfigPath, kTemplate);
+}
+
+Result<void> save_config(Storage& storage, const Config& config) {
+  if (!storage.mounted()) return fail("no SD card");
+  (void)storage.ensure_dir("fm1-card");
+  std::string text;
+  text.reserve(512);
+  text += "{\n  \"wifi\": { \"ssid\": \"";
+  text += json_escape(config.ssid);
+  text += "\", \"password\": \"";
+  text += json_escape(config.password);
+  text += "\" },\n  \"catalog\": \"";
+  text += json_escape(config.catalog_url);
+  text += "\"\n}\n";
+  return storage.write_text(kConfigPath, text);
 }
 
 }  // namespace fm1::platform

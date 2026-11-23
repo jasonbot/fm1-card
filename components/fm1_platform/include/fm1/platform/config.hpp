@@ -16,5 +16,6 @@ struct Config {
 
 Result<Config> load_config(Storage& storage);
 Result<void> write_config_template(Storage& storage);
+Result<void> save_config(Storage& storage, const Config& config);
 
 }  // namespace fm1::platform
