@@ -81,8 +81,10 @@ python -m esptool --chip esp32s3 -p /dev/ttyACM0 -b 460800 \
   0x10000 build/fm1-card.bin
 ```
 
-Or `idf.py -p /dev/ttyACM0 flash`. The flash is verified by esptool. On the
-first boot after flashing, `fm1-card` claims the OTG PHY for host mode and
+Or `idf.py -p /dev/ttyACM0 flash`. The flash is verified by esptool. On this
+board, esptool's `--after hard-reset` over USB Serial/JTAG does not reliably
+start the application; press the reset button (or power-cycle) once after
+flashing. On the first boot, `fm1-card` claims the OTG PHY for host mode and
 `/dev/ttyACM0` disappears — that is the host port working, not a crash. To
 reflash, repeat the G0 download-mode sequence.
 
