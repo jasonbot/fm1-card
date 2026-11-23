@@ -23,6 +23,9 @@ idf_component_register(
     esp_driver_sdspi
     esp_driver_sdmmc
     nvs_flash
+    esp_http_server
+    esp_app_format
+    mdns
     freertos
   PRIV_REQUIRES
     esp_driver_spi

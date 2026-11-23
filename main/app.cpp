@@ -4,6 +4,7 @@
 #include <array>
 #include <unordered_set>
 
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_system.h"
 #include <chrono>
@@ -63,6 +64,10 @@ void App::run() {
   }
   usb_.set_router(&router_);
   usb_.set_event_callback([this] { dirty_ = true; });
+  net_.set_status_provider([this] {
+    std::lock_guard lock(status_lock_);
+    return status_json_;
+  });
   if (auto r = flash_.start(usb_, storage_); !r) {
     ESP_LOGE(kTag, "flash worker: %s", r.error().message.c_str());
   }
@@ -456,6 +461,50 @@ void App::sync_ui() {
   state_.popup_title = popup_.title;
   state_.popup_items = popup_.items;
   state_.popup_selection = popup_.selection;
+
+  std::string json;
+  json.reserve(1024);
+  json += "{\"app\":\"fm1-card\",\"version\":\"";
+  json += esp_app_get_description()->version;
+  json += "\",\"sd\":";
+  json += state_.sd_mounted ? "true" : "false";
+  json += ",\"wifi\":\"";
+  switch (state_.wifi_state) {
+    case platform::WifiState::Connected: json += "connected"; break;
+    case platform::WifiState::Connecting: json += "connecting"; break;
+    case platform::WifiState::Failed: json += "failed"; break;
+    default: json += "unconfigured"; break;
+  }
+  json += "\",\"devices\":[";
+  char item[192]{};
+  for (std::size_t i = 0; i < state_.midi.size(); ++i) {
+    const auto& port = state_.midi[i];
+    std::snprintf(item, sizeof(item),
+                  "%s{\"slot\":%u,\"path\":\"%s\",\"identity\":\"%s\",\"clock\":%s}",
+                  i == 0 ? "" : ",", static_cast<unsigned>(port.slot), port.path.c_str(),
+                  port.identity.c_str(),
+                  state_.clock_mask & (1u << port.slot) ? "true" : "false");
+    json += item;
+  }
+  json += "],\"clock\":{\"bpm\":";
+  std::snprintf(item, sizeof(item), "%lu,\"running\":%s}",
+                static_cast<unsigned long>(state_.bpm),
+                state_.clock_running ? "true" : "false");
+  json += item;
+  json += ",\"msc\":";
+  std::snprintf(item, sizeof(item), "%zu", state_.msc.size());
+  json += item;
+  json += ",\"library\":{\"catalog\":";
+  std::snprintf(item, sizeof(item), "%zu,\"local\":%zu,\"local_total\":%zu}",
+                state_.catalog_total, state_.local.size(), state_.local_total);
+  json += item;
+  json += ",\"hoard\":";
+  json += state_.hoard_active ? "true" : "false";
+  json += "}";
+  {
+    std::lock_guard lock(status_lock_);
+    status_json_ = std::move(json);
+  }
 }
 
 void App::cycle_pane(int delta) {

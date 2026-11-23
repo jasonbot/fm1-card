@@ -80,6 +80,8 @@ class App {
   Popup popup_;
 
   std::mutex message_lock_;
+  std::mutex status_lock_;
+  std::string status_json_;
   std::mutex hoard_lock_;
   std::atomic<bool> hoard_cancel_{false};
   struct HoardState {

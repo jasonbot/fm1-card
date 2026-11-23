@@ -5,16 +5,29 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
+#include "esp_app_desc.h"
 #include "esp_crt_bundle.h"
 #include "esp_event.h"
 #include "esp_http_client.h"
+#include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/task.h"
 #include "psa/crypto.h"
+
+#include "fm1/package.hpp"
+#include "fm1/platform/file.hpp"
+#include "mdns.h"
 #include "nvs_flash.h"
 
 namespace fm1::platform {
@@ -76,7 +89,104 @@ std::string hex(const uint8_t* bytes, std::size_t length) {
   return out;
 }
 
+
+void set_cors(httpd_req_t* request) {
+  httpd_resp_set_hdr(request, "Access-Control-Allow-Origin", "*");
+  httpd_resp_set_hdr(request, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  httpd_resp_set_hdr(request, "Access-Control-Allow-Headers", "Content-Type");
+  httpd_resp_set_hdr(request, "Access-Control-Max-Age", "600");
+}
+
+esp_err_t status_handler(httpd_req_t* request) {
+  auto* net = static_cast<Net*>(request->user_ctx);
+  std::string body = net != nullptr ? net->status_json() : std::string("{}");
+  set_cors(request);
+  httpd_resp_set_type(request, "application/json");
+  return httpd_resp_send(request, body.data(), body.size());
+}
+
+esp_err_t options_handler(httpd_req_t* request) {
+  set_cors(request);
+  httpd_resp_set_status(request, "204 No Content");
+  return httpd_resp_send(request, nullptr, 0);
+}
+
+bool ends_with(std::string_view text, std::string_view suffix) {
+  return text.size() >= suffix.size() &&
+         text.substr(text.size() - suffix.size()) == suffix;
+}
+
+std::string json_escape(std::string_view text) {
+  std::string out;
+  out.reserve(text.size() + 4);
+  for (char c : text) {
+    switch (c) {
+      case '"': out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      default: out.push_back(c); break;
+    }
+  }
+  return out;
+}
+
+std::string read_meta_sha(const std::string& path) {
+  std::FILE* file = std::fopen((path + ".meta").c_str(), "rb");
+  if (file == nullptr) return {};
+  char url[512]{};
+  char sha[128]{};
+  const bool ok = std::fgets(url, sizeof(url), file) != nullptr &&
+                  std::fgets(sha, sizeof(sha), file) != nullptr;
+  std::fclose(file);
+  if (!ok) return {};
+  sha[std::strcspn(sha, "\r\n")] = '\0';
+  return std::strlen(sha) == 64 ? std::string(sha) : std::string{};
+}
+
+std::string url_decode(std::string_view text) {
+  std::string out;
+  out.reserve(text.size());
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '%' && i + 2 < text.size() &&
+        std::isxdigit(static_cast<unsigned char>(text[i + 1])) &&
+        std::isxdigit(static_cast<unsigned char>(text[i + 2]))) {
+      const auto value = [](char c) {
+        return static_cast<unsigned>(c >= '0' && c <= '9' ? c - '0'
+                                   : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                                                          : c - 'A' + 10);
+      };
+      out.push_back(static_cast<char>((value(text[i + 1]) << 4) | value(text[i + 2])));
+      i += 2;
+    } else {
+      out.push_back(text[i]);
+    }
+  }
+  return out;
+}
+
+std::string sanitize_firmware_name(std::string name) {
+  const auto slash = name.find_last_of("/\\");
+  if (slash != std::string::npos) name.erase(0, slash + 1);
+  if (!ends_with(name, ".fwsc")) return {};
+  std::string out;
+  for (char c : name) {
+    if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.' ||
+        c == '+') {
+      out.push_back(c);
+    }
+  }
+  if (!ends_with(out, ".fwsc") || out.size() > 120) return {};
+  return out;
+}
+
 }  // namespace
+
+void Net::set_status_provider(std::function<std::string()> provider) {
+  status_provider_ = std::move(provider);
+}
+
+std::string Net::status_json() const {
+  return status_provider_ ? status_provider_() : std::string("{}");
+}
 
 Result<void> Net::start(Storage& storage, const Config& config) {
   storage_ = &storage;
@@ -154,7 +264,250 @@ Result<void> Net::start(Storage& storage, const Config& config) {
     return connected;
   }
   state_.store(WifiState::Connected);
+  auto services = start_http();
+  if (!services) ESP_LOGW(kTag, "HTTP/mDNS: %s", services.error().message.c_str());
   return {};
+}
+
+esp_err_t Net::list_firmwares(httpd_req_t* request) {
+  if (storage_ == nullptr || !storage_->mounted()) {
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
+    return ESP_FAIL;
+  }
+  set_cors(request);
+  httpd_resp_set_type(request, "application/json");
+  httpd_resp_send_chunk(request, "[", 1);
+  bool first = true;
+  for (const auto& dir : {"fm1-card/firmwares", "firmwares"}) {
+    const std::string base = storage_->path(dir);
+    DIR* handle = opendir(base.c_str());
+    if (handle == nullptr) continue;
+    while (dirent* item = readdir(handle)) {
+      const std::string name = item->d_name;
+      if (!ends_with(name, ".fwsc")) continue;
+      const std::string path = base + "/" + name;
+      struct stat info {};
+      if (stat(path.c_str(), &info) != 0) continue;
+      const std::string sha = read_meta_sha(path);
+      std::string record;
+      record.reserve(256);
+      if (!first) record += ",";
+      first = false;
+      record += "{\"name\":\"" + json_escape(name) + "\",\"dir\":\"" +
+                json_escape(dir) + "\",\"size\":" + std::to_string(info.st_size) +
+                ",\"sha256\":";
+      if (sha.empty()) record += "null";
+      else record += "\"" + sha + "\"";
+      record += "}";
+      httpd_resp_send_chunk(request, record.data(), record.size());
+    }
+    closedir(handle);
+  }
+  httpd_resp_send_chunk(request, "]", 1);
+  httpd_resp_send_chunk(request, nullptr, 0);
+  return ESP_OK;
+}
+
+esp_err_t Net::upload_firmware(httpd_req_t* request) {
+  if (storage_ == nullptr || !storage_->mounted()) {
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
+    return ESP_FAIL;
+  }
+  const std::size_t query_len = httpd_req_get_url_query_len(request);
+  std::string name;
+  if (query_len > 0 && query_len < 512) {
+    std::string query(query_len + 1, '\0');
+    if (httpd_req_get_url_query_str(request, query.data(), query.size()) == ESP_OK) {
+      char value[160]{};
+      if (httpd_query_key_value(query.c_str(), "name", value, sizeof(value)) == ESP_OK) {
+        name = sanitize_firmware_name(url_decode(value));
+      }
+    }
+  }
+  if (name.empty()) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "name=*.fwsc required");
+    return ESP_FAIL;
+  }
+  if (request->content_len == 0 || request->content_len > 8 * 1024 * 1024) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "bad content length");
+    return ESP_FAIL;
+  }
+  const std::string final_path = storage_->path(std::string("fm1-card/firmwares/") + name);
+  const std::string temp_path = final_path + ".upload";
+  std::FILE* file = std::fopen(temp_path.c_str(), "wb");
+  if (file == nullptr) {
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "cannot create file");
+    return ESP_FAIL;
+  }
+  std::size_t remaining = request->content_len;
+  std::array<char, 1024> buffer{};
+  while (remaining > 0) {
+    const int got = httpd_req_recv(request, buffer.data(),
+                                   std::min<std::size_t>(remaining, buffer.size()));
+    if (got == HTTPD_SOCK_ERR_TIMEOUT) continue;
+    if (got <= 0) {
+      std::fclose(file);
+      std::remove(temp_path.c_str());
+      set_cors(request);
+      httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "upload interrupted");
+      return ESP_FAIL;
+    }
+    if (std::fwrite(buffer.data(), 1, static_cast<std::size_t>(got), file) !=
+        static_cast<std::size_t>(got)) {
+      std::fclose(file);
+      std::remove(temp_path.c_str());
+      httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "short write");
+      return ESP_FAIL;
+    }
+    remaining -= static_cast<std::size_t>(got);
+  }
+  std::fclose(file);
+
+  FileReader reader;
+  const auto opened = reader.open(temp_path);
+  const auto layout = opened ? package::inspect(reader) : Result<package::Layout>(fail("open"));
+  if (!opened || !layout) {
+    std::remove(temp_path.c_str());
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "not a valid .fwsc");
+    return ESP_FAIL;
+  }
+  std::remove(final_path.c_str());
+  if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
+    std::remove(temp_path.c_str());
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "cannot save file");
+    return ESP_FAIL;
+  }
+  std::size_t written = 0;
+  if (auto sha = sha256_file(final_path, &written); sha) {
+    if (std::FILE* meta = std::fopen((final_path + ".meta").c_str(), "wb")) {
+      std::fprintf(meta, "local:%s\n%s\n%zu\n", name.c_str(), sha->c_str(), written);
+      std::fclose(meta);
+    }
+  }
+  note_library_change();
+  set_cors(request);
+  httpd_resp_set_type(request, "application/json");
+  std::string body = "{\"ok\":true,\"name\":\"" + json_escape(name) +
+                     "\",\"product\":\"" + json_escape(layout->product) +
+                     "\",\"size\":" + std::to_string(written) + "}";
+  return httpd_resp_send(request, body.data(), body.size());
+}
+
+Result<void> Net::start_http() {
+  if (http_ != nullptr) return {};
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = 80;
+  config.max_uri_handlers = 8;
+  config.stack_size = 8192;
+  config.lru_purge_enable = true;
+  httpd_handle_t server = nullptr;
+  if (httpd_start(&server, &config) != ESP_OK) {
+    return fail("HTTP server failed");
+  }
+  http_ = server;
+  httpd_uri_t status{};
+  status.uri = "/status";
+  status.method = HTTP_GET;
+  status.handler = status_handler;
+  status.user_ctx = this;
+  httpd_register_uri_handler(server, &status);
+  httpd_uri_t root = status;
+  root.uri = "/";
+  httpd_register_uri_handler(server, &root);
+
+  httpd_uri_t list = status;
+  list.uri = "/firmwares";
+  list.method = HTTP_GET;
+  list.handler = [](httpd_req_t* request) {
+    return static_cast<Net*>(request->user_ctx)->list_firmwares(request);
+  };
+  httpd_register_uri_handler(server, &list);
+
+  httpd_uri_t upload = status;
+  upload.uri = "/firmwares";
+  upload.method = HTTP_POST;
+  upload.handler = [](httpd_req_t* request) {
+    return static_cast<Net*>(request->user_ctx)->upload_firmware(request);
+  };
+  httpd_register_uri_handler(server, &upload);
+
+  httpd_uri_t options{};
+  options.uri = "/firmwares";
+  options.method = HTTP_OPTIONS;
+  options.handler = options_handler;
+  httpd_register_uri_handler(server, &options);
+
+  esp_err_t err = mdns_init();
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "mDNS init failed: %s", esp_err_to_name(err));
+    return {};
+  }
+  mdns_hostname_set("fm1-card");
+  mdns_instance_name_set("fm1-card");
+  mdns_txt_item_t txt[] = {
+      {"app", "fm1-card"},
+      {"version", esp_app_get_description()->version},
+      {"api", "/status"},
+      {"usb", "host"},
+  };
+  mdns_service_add(nullptr, "_fm1card", "_tcp", 80, txt, 4);
+  mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
+  start_discovery();
+  return {};
+}
+
+void Net::start_discovery() {
+  if (discovery_socket_ >= 0) return;
+  const int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (fd < 0) return;
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(8135);
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  if (bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0 ||
+      fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0) {
+    close(fd);
+    return;
+  }
+  discovery_socket_ = fd;
+  discovery_running_.store(true);
+  xTaskCreate(&Net::discovery_entry, "fm1-discover", 4096, this, 1, nullptr);
+}
+
+void Net::stop_discovery() {
+  discovery_running_.store(false);
+  if (discovery_socket_ >= 0) {
+    close(discovery_socket_);
+    discovery_socket_ = -1;
+  }
+}
+
+void Net::discovery_entry(void* arg) {
+  static_cast<Net*>(arg)->discovery_loop();
+}
+
+void Net::discovery_loop() {
+  char buffer[32]{};
+  while (discovery_running_.load()) {
+    sockaddr_in from{};
+    socklen_t from_len = sizeof(from);
+    const int got = recvfrom(discovery_socket_, buffer, sizeof(buffer) - 1, 0,
+                             reinterpret_cast<sockaddr*>(&from), &from_len);
+    if (got > 0) {
+      buffer[got] = '\0';
+      if (std::strcmp(buffer, "hello") == 0 || std::strcmp(buffer, "FM1CARD?") == 0) {
+        char reply[96]{};
+        const int length = std::snprintf(reply, sizeof(reply),
+                                         "fm1-card (on fm1-card);80\n");
+        sendto(discovery_socket_, reply, std::max(0, length), 0,
+               reinterpret_cast<sockaddr*>(&from), from_len);
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
 }
 
 Result<void> Net::connect_wifi() {
@@ -220,6 +573,7 @@ Result<void> Net::ensure_connected() {
 }
 
 void Net::stop() {
+  stop_discovery();
   if (started_) {
     esp_wifi_stop();
     esp_wifi_deinit();

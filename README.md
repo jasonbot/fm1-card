@@ -44,6 +44,18 @@ claims the USB OTG port in host mode. Remaining bring-up: hub power, real
 MIDI-device enumeration/routing, and flashing an FM-1 — see `docs/hardware.md`
 for the power finding that matters before you plug anything in.
 
+## Network API
+
+While Wi-Fi is connected, the device is discoverable as `fm1-card.local`
+(`_fm1card._tcp`) and through UDP discovery on port `8135`. It exposes:
+
+- `GET /status` — device, USB-MIDI, clock and library state
+- `GET /firmwares` — installed packages with sizes and sidecar SHA-256
+- `POST /firmwares?name=<file>.fwsc` — upload/overwrite a package
+
+See [`docs/api.md`](docs/api.md) for examples. CORS is enabled for browser
+frontends; native apps can ignore it.
+
 ## Releases
 
 Prebuilt images are published at
