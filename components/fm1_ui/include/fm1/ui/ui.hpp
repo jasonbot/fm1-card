@@ -31,6 +31,7 @@ struct UiState {
   std::vector<catalog::Entry> catalog;
   std::vector<platform::LocalPackage> local;
   std::size_t catalog_total = 0;
+  std::size_t local_total = 0;
   std::string device_filter = "ALL";
   std::string chip_filter = "ALL";
 

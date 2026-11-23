@@ -148,9 +148,11 @@ Result<std::optional<catalog::Entry>> Library::find(std::string_view id) {
   return std::optional<catalog::Entry>{};
 }
 
-Result<std::vector<LocalPackage>> Library::local_packages() {
+Result<std::vector<LocalPackage>> Library::local_packages(std::size_t limit,
+                                                          std::size_t* total) {
   std::vector<LocalPackage> out;
   if (!storage_.mounted()) return out;
+  std::size_t found = 0;
   const std::array<std::string, 2> dirs{"fm1-card/firmwares", "firmwares"};
   for (const auto& dir : dirs) {
     DIR* handle = opendir(storage_.path(dir).c_str());
@@ -158,6 +160,8 @@ Result<std::vector<LocalPackage>> Library::local_packages() {
     while (dirent* item = readdir(handle)) {
       const std::string name = item->d_name;
       if (name.size() < 6 || name.substr(name.size() - 5) != ".fwsc") continue;
+      ++found;
+      if (out.size() >= limit) continue;
       const auto path = storage_.path(dir + "/" + name);
       FileReader reader;
       if (!reader.open(path)) continue;
@@ -177,9 +181,26 @@ Result<std::vector<LocalPackage>> Library::local_packages() {
     }
     closedir(handle);
   }
+  if (total != nullptr) *total = found;
   std::sort(out.begin(), out.end(),
             [](const LocalPackage& a, const LocalPackage& b) { return a.path < b.path; });
   return out;
+}
+
+Result<std::size_t> Library::local_count() {
+  if (!storage_.mounted()) return 0;
+  std::size_t found = 0;
+  const std::array<std::string, 2> dirs{"fm1-card/firmwares", "firmwares"};
+  for (const auto& dir : dirs) {
+    DIR* handle = opendir(storage_.path(dir).c_str());
+    if (handle == nullptr) continue;
+    while (dirent* item = readdir(handle)) {
+      const std::string name = item->d_name;
+      if (name.size() >= 6 && name.substr(name.size() - 5) == ".fwsc") ++found;
+    }
+    closedir(handle);
+  }
+  return found;
 }
 
 Result<std::string> Library::package_path(std::string_view id, std::string_view version) {

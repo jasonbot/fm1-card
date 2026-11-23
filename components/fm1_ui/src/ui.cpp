@@ -163,9 +163,17 @@ void Ui::library(const UiState& state, int, int rows) {
     canvas_.fill(0, 22, 240, 11, 1);
     canvas_.textf(0, 2, 0, "/%s_", state.filter.c_str());
   } else {
-    canvas_.textf(0, 2, 2, "LIB %zu SD %s %s %s", state.catalog_total,
-                  state.sd_mounted ? "ok" : "NO", state.device_filter.c_str(),
-                  state.chip_filter.c_str());
+    if (!state.sd_mounted) {
+      canvas_.textf(0, 2, 2, "LIB %zu SD NO %s %s", state.catalog_total,
+                    state.device_filter.c_str(), state.chip_filter.c_str());
+    } else if (state.local_total > state.local.size()) {
+      canvas_.textf(0, 2, 2, "LIB %zu SD %zu/%zu %s %s", state.catalog_total,
+                    state.local.size(), state.local_total, state.device_filter.c_str(),
+                    state.chip_filter.c_str());
+    } else {
+      canvas_.textf(0, 2, 2, "LIB %zu SD ok %s %s", state.catalog_total,
+                    state.device_filter.c_str(), state.chip_filter.c_str());
+    }
     if (!state.filter.empty()) {
       canvas_.text_clipped(30, 2, 10, "/" + state.filter, 5);
     }

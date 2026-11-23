@@ -49,7 +49,10 @@ class Library {
   // Calls fn for every cached entry; stop early if fn returns false.
   Result<void> for_each(const std::function<bool(const catalog::Entry&)>& fn);
   Result<std::optional<catalog::Entry>> find(std::string_view id);
-  Result<std::vector<LocalPackage>> local_packages();
+  // Inspects at most `limit` files; `total` receives the full count.
+  Result<std::vector<LocalPackage>> local_packages(std::size_t limit = 64,
+                                                   std::size_t* total = nullptr);
+  Result<std::size_t> local_count();
   Result<std::string> package_path(std::string_view id, std::string_view version);
 
   [[nodiscard]] static std::string cache_path() { return "fm1-card/catalog.bin"; }

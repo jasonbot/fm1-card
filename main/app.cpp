@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <unordered_set>
+
+#include "esp_heap_caps.h"
+#include "esp_system.h"
 #include <chrono>
 #include <cstdio>
 
@@ -75,6 +78,15 @@ void App::run() {
     (void)storage_.ensure_dir("fm1-card");
     (void)storage_.ensure_dir("fm1-card/firmwares");
     (void)storage_.ensure_dir("fm1-card/backups");
+    (void)storage_.ensure_dir("fm1-card/logs");
+    char boot[160]{};
+    std::snprintf(boot, sizeof(boot), "reset=%d free=%u largest=%u\n",
+                  static_cast<int>(esp_reset_reason()),
+                  static_cast<unsigned>(
+                      heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                  static_cast<unsigned>(
+                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+    (void)storage_.write_text("fm1-card/logs/boot.log", boot);
   }
   queue_net({.command = NetCommand::Start, .entry = {}, .destination = {}});
 
@@ -350,7 +362,10 @@ void App::net_loop() {
 }
 
 void App::refresh_library(bool keep_shift) {
-  state_.local = library_.local_packages().value_or(std::vector<platform::LocalPackage>{});
+  std::size_t local_total = 0;
+  state_.local = library_.local_packages(64, &local_total)
+                     .value_or(std::vector<platform::LocalPackage>{});
+  state_.local_total = local_total;
   if (library_filter_.device) {
     std::erase_if(state_.local, [&](const platform::LocalPackage& local) {
       return local.device != *library_filter_.device;
@@ -392,6 +407,16 @@ void App::refresh_library(bool keep_shift) {
   }
   const int max_index = static_cast<int>(state_.local.size() + state_.catalog.size()) - 1;
   if (state_.selection > max_index) state_.selection = std::max(0, max_index);
+  if (storage_.mounted()) {
+    char line[160]{};
+    std::snprintf(line, sizeof(line), "shown=%zu total=%zu free=%u largest=%u\n",
+                  state_.local.size(), state_.local_total,
+                  static_cast<unsigned>(
+                      heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                  static_cast<unsigned>(
+                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+    (void)storage_.write_text("fm1-card/logs/library.log", line);
+  }
   dirty_ = true;
 }
 
