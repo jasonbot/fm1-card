@@ -6,6 +6,7 @@ target/
 *.a
 *.elf
 *.bin
+!data/*.bin
 *.map
 *.log
 sdkconfig
@@ -15,3 +16,4 @@ managed_components/
 .vscode/
 .idea/
 compile_commands.json
+dist/
