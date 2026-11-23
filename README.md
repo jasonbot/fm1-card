@@ -50,7 +50,7 @@ While Wi-Fi is connected, the device answers UDP discovery on port `8135`
 (`hello` → `fm1-card;<ip>;80`). It exposes an HTTP API at that address:
 
 - `GET /status` — device, USB-MIDI, clock and library state
-- `GET /firmwares` — installed packages with sizes and sidecar SHA-256
+- `GET /firmwares` — installed package names; `?detail=1` adds size/SHA-256
 - `POST /firmwares?name=<file>.fwsc` — upload/overwrite a package
 
 See [`docs/api.md`](docs/api.md) for examples. CORS is enabled for browser

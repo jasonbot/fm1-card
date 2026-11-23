@@ -60,7 +60,7 @@ Result<std::string> sha256_file(const std::string& path, std::size_t* size_out) 
   psa_crypto_init();
   psa_hash_operation_t sha = PSA_HASH_OPERATION_INIT;
   psa_hash_setup(&sha, PSA_ALG_SHA_256);
-  std::array<uint8_t, 4096> buffer{};
+  std::array<uint8_t, 1024> buffer{};
   std::size_t total = 0;
   for (;;) {
     const auto got = std::fread(buffer.data(), 1, buffer.size(), file);
@@ -272,10 +272,29 @@ esp_err_t Net::list_firmwares(httpd_req_t* request) {
     httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
     return ESP_FAIL;
   }
+  bool detail = false;
+  const std::size_t query_len = httpd_req_get_url_query_len(request);
+  if (query_len > 0 && query_len < 256) {
+    std::string query(query_len + 1, '\0');
+    if (httpd_req_get_url_query_str(request, query.data(), query.size()) == ESP_OK) {
+      char value[8]{};
+      if (httpd_query_key_value(query.c_str(), "detail", value, sizeof(value)) == ESP_OK) {
+        detail = std::string_view(value) == "1";
+      }
+    }
+  }
   set_cors(request);
   httpd_resp_set_type(request, "application/json");
   httpd_resp_send_chunk(request, "[", 1);
   bool first = true;
+  std::string out;
+  out.reserve(4096);
+  const auto flush = [&]() {
+    if (!out.empty()) {
+      httpd_resp_send_chunk(request, out.data(), out.size());
+      out.clear();
+    }
+  };
   for (const auto& dir : {"fm1-card/firmwares", "firmwares"}) {
     const std::string base = storage_->path(dir);
     DIR* handle = opendir(base.c_str());
@@ -284,29 +303,39 @@ esp_err_t Net::list_firmwares(httpd_req_t* request) {
       const std::string name = item->d_name;
       if (!ends_with(name, ".fwsc")) continue;
       const std::string path = base + "/" + name;
-      struct stat info {};
-      if (stat(path.c_str(), &info) != 0) continue;
-      const std::string sha = read_meta_sha(path);
       std::string record;
       record.reserve(256);
       if (!first) record += ",";
       first = false;
       record += "{\"name\":\"" + json_escape(name) + "\",\"dir\":\"" +
-                json_escape(dir) + "\",\"size\":" + std::to_string(info.st_size) +
-                ",\"sha256\":";
-      if (sha.empty()) record += "null";
-      else record += "\"" + sha + "\"";
+                json_escape(dir) + "\"";
+      if (detail) {
+        struct stat info {};
+        if (stat(path.c_str(), &info) != 0) continue;
+        const std::string sha = read_meta_sha(path);
+        record += ",\"size\":" + std::to_string(info.st_size) + ",\"sha256\":";
+        if (sha.empty()) record += "null";
+        else record += "\"" + sha + "\"";
+      }
       record += "}";
-      httpd_resp_send_chunk(request, record.data(), record.size());
+      out += record;
+      if (out.size() >= 2048) flush();
     }
     closedir(handle);
   }
+  flush();
   httpd_resp_send_chunk(request, "]", 1);
   httpd_resp_send_chunk(request, nullptr, 0);
   return ESP_OK;
 }
 
 esp_err_t Net::upload_firmware(httpd_req_t* request) {
+  const auto log = [&](std::string_view text) {
+    if (storage_ != nullptr && storage_->mounted()) {
+      (void)storage_->write_text("fm1-card/logs/net.log", text);
+    }
+  };
+  log("upload start\n");
   if (storage_ == nullptr || !storage_->mounted()) {
     httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
     return ESP_FAIL;
@@ -341,10 +370,23 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
   }
   std::size_t remaining = request->content_len;
   std::array<char, 1024> buffer{};
+  int timeouts = 0;
   while (remaining > 0) {
     const int got = httpd_req_recv(request, buffer.data(),
                                    std::min<std::size_t>(remaining, buffer.size()));
-    if (got == HTTPD_SOCK_ERR_TIMEOUT) continue;
+    if (got == HTTPD_SOCK_ERR_TIMEOUT) {
+      if (++timeouts > 10) {
+        log("upload timeout\n");
+        std::fclose(file);
+        std::remove(temp_path.c_str());
+        set_cors(request);
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "upload timed out");
+        return ESP_FAIL;
+      }
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+    timeouts = 0;
     if (got <= 0) {
       std::fclose(file);
       std::remove(temp_path.c_str());
@@ -362,6 +404,7 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
     remaining -= static_cast<std::size_t>(got);
   }
   std::fclose(file);
+  log("upload received\n");
 
   FileReader reader;
   const auto opened = reader.open(temp_path);
@@ -372,6 +415,7 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
     httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "not a valid .fwsc");
     return ESP_FAIL;
   }
+  log("upload validated\n");
   std::remove(final_path.c_str());
   if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
     std::remove(temp_path.c_str());
@@ -385,6 +429,7 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
       std::fclose(meta);
     }
   }
+  log("upload saved\n");
   note_library_change();
   set_cors(request);
   httpd_resp_set_type(request, "application/json");
@@ -406,7 +451,7 @@ Result<void> Net::start_http() {
   config.server_port = 80;
   config.max_uri_handlers = 8;
   config.max_open_sockets = 4;
-  config.stack_size = 8192;
+  config.stack_size = 20480;
   config.lru_purge_enable = true;
   httpd_handle_t server = nullptr;
   if (httpd_start(&server, &config) != ESP_OK) {
@@ -694,6 +739,7 @@ Result<void> Net::refresh_catalog(const ProgressFn& progress) {
     log("failed: " + finish.error().message + "\n");
     return finish;
   }
+  log("upload validated\n");
   std::remove(final_path.c_str());
   if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
     std::remove(temp_path.c_str());

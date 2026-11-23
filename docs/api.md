@@ -40,17 +40,18 @@ Returns current state:
 
 ## `GET /firmwares`
 
-Streams a JSON array of files in `fm1-card/firmwares` and `firmwares`:
+Streams a JSON array of files in `fm1-card/firmwares` and `firmwares`.
+By default it returns names only, which is fast even with hundreds of files:
 
 ```json
 [
-  {"name":"felucca-1.8.3.fwsc","dir":"fm1-card/firmwares","size":610286,
-   "sha256":"..."}
+  {"name":"felucca-1.8.3.fwsc","dir":"fm1-card/firmwares"}
 ]
 ```
 
-`sha256` comes from the `.fwsc.meta` sidecar and is `null` when no sidecar
-exists.
+Add `?detail=1` to include `size` and the sidecar `sha256` (null when no
+sidecar exists). This requires a stat/meta pass over every file and is much
+slower on SD.
 
 ## `POST /firmwares?name=<file>.fwsc`
 
