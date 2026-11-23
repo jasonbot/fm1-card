@@ -1,0 +1,17 @@
+# Host build products
+build/
+build-*/
+target/
+*.o
+*.a
+*.elf
+*.bin
+*.map
+*.log
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+.vscode/
+.idea/
+compile_commands.json

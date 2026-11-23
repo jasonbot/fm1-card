@@ -1,0 +1,58 @@
+#include "fm1/platform/config.hpp"
+
+#include <array>
+#include <cstring>
+
+#include <lwjson/lwjson.h>
+
+namespace fm1::platform {
+namespace {
+
+constexpr const char* kConfigPath = "fm1-card/config.json";
+constexpr const char* kTemplate =
+    "{\n"
+    "  \"wifi\": { \"ssid\": \"\", \"password\": \"\" },\n"
+    "  \"catalog\": \"https://www.jasonscheirer.com/firmware-zoo/firmwares.json\"\n"
+    "}\n";
+
+std::string value_of(const lwjson_token_t* token) {
+  if (token == nullptr) return {};
+  size_t length = 0;
+  const char* text = lwjson_get_val_string(token, &length);
+  return text != nullptr ? std::string(text, length) : std::string{};
+}
+
+}  // namespace
+
+Result<Config> load_config(Storage& storage) {
+  Config config;
+  auto text = storage.read_text(kConfigPath, 4096);
+  if (!text) {
+    // First boot: leave a template so the user can edit the card.
+    (void)write_config_template(storage);
+    return config;
+  }
+  std::array<lwjson_token_t, 64> tokens{};
+  lwjson_t json{};
+  if (lwjson_init(&json, tokens.data(), tokens.size()) != lwjsonOK) {
+    return fail("cannot initialise config parser");
+  }
+  if (lwjson_parse(&json, text->c_str()) != lwjsonOK) {
+    return fail("config.json is not valid JSON");
+  }
+  const auto* wifi = lwjson_find(&json, "wifi");
+  if (wifi != nullptr) {
+    config.ssid = value_of(lwjson_find_ex(&json, wifi, "ssid"));
+    config.password = value_of(lwjson_find_ex(&json, wifi, "password"));
+  }
+  const auto url = value_of(lwjson_find(&json, "catalog"));
+  if (!url.empty()) config.catalog_url = url;
+  return config;
+}
+
+Result<void> write_config_template(Storage& storage) {
+  (void)storage.ensure_dir("fm1-card");
+  return storage.write_text(kConfigPath, kTemplate);
+}
+
+}  // namespace fm1::platform

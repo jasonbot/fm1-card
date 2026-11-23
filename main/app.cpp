@@ -1,0 +1,586 @@
+#include "app.hpp"
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdio>
+
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#include "fm1/identity.hpp"
+
+namespace fm1 {
+namespace {
+
+constexpr const char* kTag = "fm1-app";
+
+void blit_cb(void* context, int x, int y, int width, int height,
+             std::span<const uint16_t> pixels) {
+  static_cast<platform::Display*>(context)->blit(x, y, width, height, pixels);
+}
+
+std::string label_of(const platform::MidiPort& port) {
+  return port.identity.empty() ? ("MIDI " + port.path) : port.identity;
+}
+
+}  // namespace
+
+App::App(platform::Display& display, platform::Keyboard& keyboard,
+         platform::Storage& storage, platform::Battery& battery)
+    : display_(display), keyboard_(keyboard), storage_(storage), battery_(battery),
+      library_(storage) {}
+
+void App::run() {
+  if (auto r = display_.init(); !r) {
+    ESP_LOGE(kTag, "display: %s", r.error().message.c_str());
+    return;
+  }
+  if (auto r = keyboard_.init(); !r) {
+    ESP_LOGE(kTag, "keyboard: %s", r.error().message.c_str());
+  }
+  if (auto r = battery_.init(); !r) {
+    ESP_LOGE(kTag, "battery: %s", r.error().message.c_str());
+  }
+  if (auto r = storage_.mount(); !r) {
+    ESP_LOGW(kTag, "storage: %s", r.error().message.c_str());
+    set_message("No SD card: library and backups unavailable", true);
+  } else {
+    (void)storage_.ensure_dir("fm1-card");
+    (void)storage_.ensure_dir("fm1-card/firmwares");
+    (void)storage_.ensure_dir("fm1-card/backups");
+  }
+
+  if (auto r = usb_.start(); !r) {
+    ESP_LOGE(kTag, "usb: %s", r.error().message.c_str());
+    set_message("USB host failed: " + r.error().message, true);
+  }
+  usb_.set_router(&router_);
+  usb_.set_event_callback([this] { dirty_ = true; });
+  if (auto r = flash_.start(usb_, storage_); !r) {
+    ESP_LOGE(kTag, "flash worker: %s", r.error().message.c_str());
+  }
+  queue_net({.command = NetCommand::Start, .entry = {}, .destination = {}});
+
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->ui_loop(); }, "fm1-ui",
+                          8192, this, 4, nullptr, 1);
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->clock_loop(); },
+                          "fm1-clock", 4096, this, 5, nullptr, 1);
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->net_loop(); }, "fm1-net",
+                          8192, this, 2, nullptr, 0);
+}
+
+void App::set_message(std::string message, bool error) {
+  {
+    std::lock_guard lock(message_lock_);
+    message_ = std::move(message);
+    message_is_error_ = error;
+    message_until_ = esp_timer_get_time() / 1000 + 6000;
+  }
+  dirty_ = true;
+}
+
+void App::queue_net(NetJob job) {
+  {
+    std::lock_guard lock(net_lock_);
+    net_jobs_.push_back(std::move(job));
+  }
+  net_wake_.notify_one();
+}
+
+void App::ui_loop() {
+  uint64_t last_draw = 0;
+  for (;;) {
+    while (auto event = keyboard_.poll()) handle_key(*event);
+
+    if (library_dirty_.exchange(false)) refresh_library();
+
+    const uint64_t now = esp_timer_get_time() / 1000;
+    if (dirty_.exchange(false) || now - last_draw > 200) {
+      sync_ui();
+      ui_.draw(state_);
+      ui_.canvas().present(&display_, blit_cb);
+      last_draw = now;
+    }
+    vTaskDelay(pdMS_TO_TICKS(30));
+  }
+}
+
+void App::clock_loop() {
+  for (;;) {
+    const auto due = clock_.next_due_us();
+    if (!due) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+    const uint64_t now = static_cast<uint64_t>(esp_timer_get_time());
+    if (now < *due) {
+      const uint64_t wait_us = std::min<uint64_t>(*due - now, 2000);
+      vTaskDelay(pdMS_TO_TICKS((wait_us + 999) / 1000));
+      continue;
+    }
+    const auto mask = router_.clock_targets();
+    static const std::array<uint8_t, 1> tick_byte{0xF8};
+    static const auto tick = fm1::midi::encode_message(0, tick_byte);
+    for (const auto& port : usb_.midi_ports()) {
+      if ((mask & (1u << port.slot)) != 0 && !port.claimed) {
+        usb_.send_packets(port.slot, tick);
+      }
+    }
+    clock_.advance(now);
+    if (clock_.tick() % 6 == 0) dirty_ = true;
+  }
+}
+
+void App::net_loop() {
+  for (;;) {
+    NetJob job;
+    {
+      std::unique_lock lock(net_lock_);
+      net_wake_.wait(lock, [&] { return !net_jobs_.empty(); });
+      job = std::move(net_jobs_.front());
+      net_jobs_.pop_front();
+    }
+    switch (job.command) {
+      case NetCommand::Start: {
+        auto config = platform::load_config(storage_);
+        if (!config) {
+          set_message(config.error().message, true);
+          break;
+        }
+        auto started = net_.start(storage_, *config);
+        if (!started) {
+          set_message(started.error().message, true);
+        } else if (net_.wifi_connected()) {
+          set_message("Wi-Fi ready: press R in LIB to refresh");
+          library_dirty_ = true;
+        } else {
+          set_message("No Wi-Fi configured: SD-only");
+        }
+        break;
+      }
+      case NetCommand::Refresh: {
+        set_message("Fetching catalog...");
+        auto refreshed = net_.refresh_catalog([&](const platform::NetProgress& progress) {
+          if (progress.total > 0) {
+            const int pct = static_cast<int>(progress.received * 100 / progress.total);
+            set_message("Catalog: " + std::to_string(pct) + "%");
+          }
+        });
+        if (!refreshed) {
+          set_message(refreshed.error().message, true);
+        } else {
+          catalog_offset_ = 0;
+          library_dirty_ = true;
+          set_message("Catalog updated");
+        }
+        break;
+      }
+      case NetCommand::Download: {
+        set_message("Downloading " + job.entry.name + "...");
+        auto downloaded = net_.download(job.entry, job.destination,
+                                        [&](const platform::NetProgress& progress) {
+          if (progress.total > 0) {
+            const int pct = static_cast<int>(progress.received * 100 / progress.total);
+            set_message("Download: " + std::to_string(pct) + "%");
+          }
+        });
+        if (!downloaded) {
+          set_message(downloaded.error().message, true);
+        } else {
+          set_message("Saved " + job.entry.name);
+          library_dirty_ = true;
+        }
+        break;
+      }
+    }
+    dirty_ = true;
+  }
+}
+
+void App::refresh_library(bool keep_shift) {
+  state_.local = library_.local_packages().value_or(std::vector<platform::LocalPackage>{});
+  auto total = library_.count();
+  catalog_total_ = total.value_or(0);
+  const std::size_t page = 60;
+  if (!keep_shift && catalog_offset_ > catalog_total_) catalog_offset_ = 0;
+  auto entries = library_.page(state_.filter, catalog_offset_, page);
+  state_.catalog = entries.value_or(std::vector<catalog::Entry>{});
+  const int max_index = static_cast<int>(state_.local.size() + state_.catalog.size()) - 1;
+  if (state_.selection > max_index) state_.selection = std::max(0, max_index);
+  dirty_ = true;
+}
+
+void App::sync_ui() {
+  state_.midi = usb_.midi_ports();
+  state_.msc = usb_.msc_ports();
+  state_.routes.fill(0);
+  for (std::size_t i = 0; i < state_.midi.size() && i < state_.routes.size(); ++i) {
+    state_.routes[i] = router_.sinks(state_.midi[i].slot);
+  }
+  state_.clock_mask = router_.clock_targets();
+  state_.bpm = clock_.bpm();
+  state_.clock_running = clock_.running();
+  state_.beat_phase = static_cast<uint32_t>(clock_.tick() % 24);
+  state_.flash = flash_.status();
+  state_.wifi = net_.wifi_connected();
+  state_.battery = battery_.percent();
+  {
+    std::lock_guard lock(message_lock_);
+    state_.message =
+        (esp_timer_get_time() / 1000 < message_until_) ? message_ : std::string{};
+    state_.message_error = message_is_error_;
+  }
+  state_.popup = popup_.kind != PopupKind::None;
+  state_.popup_title = popup_.title;
+  state_.popup_items = popup_.items;
+  state_.popup_selection = popup_.selection;
+}
+
+void App::cycle_pane(int delta) {
+  int pane = static_cast<int>(state_.pane) + delta;
+  if (pane < 0) pane = 3;
+  if (pane > 3) pane = 0;
+  state_.pane = static_cast<ui::Pane>(pane);
+  state_.selection = 0;
+  state_.editing_filter = false;
+  dirty_ = true;
+}
+
+void App::toggle_clock() {
+  if (clock_.running()) {
+    clock_.stop();
+    for (const auto& port : usb_.midi_ports()) {
+      if (router_.clock_enabled(port.slot) && !port.claimed) {
+        const std::array<uint8_t, 1> stop{0xFC};
+        usb_.send_sysex(port.slot, stop);
+      }
+    }
+    set_message("Clock stopped");
+  } else {
+    if (!router_.any_clock()) {
+      router_.set_clock_all(true);
+      set_message("Clock targets: all");
+    }
+    const uint64_t now = static_cast<uint64_t>(esp_timer_get_time());
+    clock_.restart_phase(now);
+    clock_.start(now);
+    for (const auto& port : usb_.midi_ports()) {
+      if (router_.clock_enabled(port.slot) && !port.claimed) {
+        const std::array<uint8_t, 1> start{0xFA};
+        usb_.send_sysex(port.slot, start);
+      }
+    }
+    set_message("Clock running");
+  }
+  dirty_ = true;
+}
+
+void App::set_bpm(int delta) {
+  const int bpm = std::clamp<int>(static_cast<int>(clock_.bpm()) + delta, clock::kMinBpm,
+                                  clock::kMaxBpm);
+  clock_.set_bpm(static_cast<uint32_t>(bpm));
+  dirty_ = true;
+}
+
+void App::open_packages(int slot) {
+  auto port = usb_.midi_port(slot);
+  if (!port) return;
+  popup_ = {};
+  popup_.kind = PopupKind::Packages;
+  popup_.title = "FLASH " + label_of(*port);
+  popup_.context = slot;
+  for (std::size_t i = 0; i < state_.local.size(); ++i) {
+    const auto& local = state_.local[i];
+    if (!port->identity.empty() &&
+        !identity::package_fits(port->identity, local.product)) {
+      continue;
+    }
+    popup_.items.push_back(local.product + "  " + std::to_string(local.size / 1024) + "K");
+    popup_.values.push_back(static_cast<int>(i));
+  }
+  if (popup_.items.empty()) {
+    popup_ = {};
+    set_message("No compatible local package", true);
+    return;
+  }
+  dirty_ = true;
+}
+
+void App::open_sinks(int source) {
+  const auto& source_port = state_.midi[static_cast<std::size_t>(source)];
+  popup_ = {};
+  popup_.kind = PopupKind::Sinks;
+  popup_.title = "ROUTE " + label_of(source_port);
+  popup_.context = source_port.slot;
+  for (const auto& port : state_.midi) {
+    const bool on = router_.forwards(source_port.slot, port.slot);
+    popup_.items.push_back(std::string(on ? "[x] " : "[ ] ") + label_of(port));
+  }
+  dirty_ = true;
+}
+
+void App::open_msc_actions(int slot) {
+  popup_ = {};
+  popup_.kind = PopupKind::MscActions;
+  popup_.title = "ROM DISK " + std::to_string(slot);
+  popup_.context = slot;
+  popup_.items = {"Backup full flash", "Install rescue bootloader"};
+  dirty_ = true;
+}
+
+void App::run_popup_action() {
+  if (popup_.kind == PopupKind::Packages) {
+    if (popup_.selection < 0 ||
+        popup_.selection >= static_cast<int>(popup_.values.size())) {
+      popup_ = {};
+      return;
+    }
+    const auto& local = state_.local[static_cast<std::size_t>(
+        popup_.values[static_cast<std::size_t>(popup_.selection)])];
+    auto port = usb_.midi_port(static_cast<uint8_t>(popup_.context));
+    const auto kind = (port && !port->identity.empty()) ? platform::FlashKind::Normal
+                                                       : platform::FlashKind::Rescue;
+    start_flash(kind, static_cast<uint8_t>(popup_.context), local.path);
+    popup_ = {};
+  } else if (popup_.kind == PopupKind::Sinks) {
+    if (popup_.selection < 0 ||
+        popup_.selection >= static_cast<int>(state_.midi.size())) {
+      return;
+    }
+    const auto sink = state_.midi[static_cast<std::size_t>(popup_.selection)].slot;
+    router_.toggle(static_cast<uint8_t>(popup_.context), sink);
+    popup_.items[static_cast<std::size_t>(popup_.selection)] =
+        std::string(router_.forwards(static_cast<uint8_t>(popup_.context), sink) ? "[x] "
+                                                                               : "[ ] ") +
+        label_of(state_.midi[static_cast<std::size_t>(popup_.selection)]);
+    dirty_ = true;
+  } else if (popup_.kind == PopupKind::MscActions) {
+    if (popup_.selection == 0) {
+      start_flash(platform::FlashKind::Backup, static_cast<uint8_t>(popup_.context), {});
+    } else {
+      start_flash(platform::FlashKind::InstallBootloader,
+                  static_cast<uint8_t>(popup_.context), {});
+    }
+    popup_ = {};
+  }
+}
+
+void App::start_flash(platform::FlashKind kind, uint8_t slot, const std::string& package) {
+  router_.set_clock(slot, false);
+  platform::FlashJob job{.kind = kind,
+                          .slot = slot,
+                          .package_path = package,
+                          .output_path = {}};
+  if (!flash_.submit(job)) {
+    set_message("A flash is already running", true);
+    return;
+  }
+  set_message("Flashing...");
+}
+
+void App::handle_popup_key(const platform::KeyEvent& event) {
+  if (event.kind != platform::KeyKind::Press) return;
+  if (event.code == 0x29) {  // Esc
+    popup_ = {};
+    dirty_ = true;
+    return;
+  }
+  if (event.code == 0x52 || event.code == 0x51) {  // Up/Down
+    const int delta = event.code == 0x52 ? -1 : 1;
+    popup_.selection = std::clamp(popup_.selection + delta, 0,
+                                  std::max(0, static_cast<int>(popup_.items.size()) - 1));
+    dirty_ = true;
+    return;
+  }
+  if (event.code == 0x28) {  // Enter
+    run_popup_action();
+    dirty_ = true;
+  }
+}
+
+void App::handle_key(const platform::KeyEvent& event) {
+  if (popup_.kind != PopupKind::None) {
+    handle_popup_key(event);
+    return;
+  }
+  if (event.kind != platform::KeyKind::Press) return;
+
+  // Text filter takes every printable key.
+  if (state_.editing_filter) {
+    if (event.code == 0x28) {
+      state_.editing_filter = false;
+      catalog_offset_ = 0;
+      library_dirty_ = true;
+    } else if (event.code == 0x29) {
+      state_.editing_filter = false;
+      state_.filter.clear();
+      catalog_offset_ = 0;
+      library_dirty_ = true;
+    } else if (event.code == 0x2A) {
+      if (!state_.filter.empty()) state_.filter.pop_back();
+      catalog_offset_ = 0;
+      state_.selection = 0;
+      library_dirty_ = true;
+    } else if (event.character >= 32 && event.character < 127) {
+      state_.filter.push_back(event.character);
+      catalog_offset_ = 0;
+      state_.selection = 0;
+      library_dirty_ = true;
+    }
+    dirty_ = true;
+    return;
+  }
+
+  switch (event.code) {
+    case 0x3A: state_.pane = ui::Pane::Devices; state_.selection = 0; break;
+    case 0x3B: state_.pane = ui::Pane::Routes; state_.selection = 0; break;
+    case 0x3C: state_.pane = ui::Pane::Clock; state_.selection = 0; break;
+    case 0x3D: state_.pane = ui::Pane::Library; state_.selection = 0; break;
+    case 0x2B: cycle_pane(1); break;
+    case 0x29:
+      if (clock_.running()) {
+        toggle_clock();
+      } else {
+        set_message("");
+      }
+      break;
+    case 0x52:
+    case 0x51: {
+      const int delta = event.code == 0x52 ? -1 : 1;
+      int limit = 0;
+      switch (state_.pane) {
+        case ui::Pane::Devices: limit = state_.midi.size() + state_.msc.size(); break;
+        case ui::Pane::Routes:
+        case ui::Pane::Clock: limit = state_.midi.size(); break;
+        case ui::Pane::Library: limit = state_.local.size() + state_.catalog.size(); break;
+      }
+      if (state_.pane == ui::Pane::Library && event.fn) {
+        if (delta > 0 && catalog_offset_ + 20 < catalog_total_) {
+          catalog_offset_ += 20;
+          library_dirty_ = true;
+        } else if (delta < 0 && catalog_offset_ >= 20) {
+          catalog_offset_ -= 20;
+          library_dirty_ = true;
+        }
+        break;
+      }
+      state_.selection = std::clamp(state_.selection + delta, 0, std::max(0, limit - 1));
+      if (state_.pane == ui::Pane::Library && delta > 0 &&
+          state_.selection + 1 >= static_cast<int>(state_.local.size() + state_.catalog.size()) &&
+          catalog_offset_ + 20 < catalog_total_) {
+        catalog_offset_ += 20;
+        library_dirty_ = true;
+      }
+      break;
+    }
+    case 0x28: {  // Enter
+      if (state_.pane == ui::Pane::Devices) {
+        if (state_.selection < static_cast<int>(state_.midi.size())) {
+          const auto& port = state_.midi[static_cast<std::size_t>(state_.selection)];
+          router_.set_clock(port.slot, !router_.clock_enabled(port.slot));
+        } else if (state_.selection >= static_cast<int>(state_.midi.size())) {
+          open_msc_actions(state_.msc[static_cast<std::size_t>(
+                                         state_.selection - state_.midi.size())]
+                               .slot);
+        }
+      } else if (state_.pane == ui::Pane::Routes &&
+                 state_.selection < static_cast<int>(state_.midi.size())) {
+        open_sinks(state_.selection);
+      } else if (state_.pane == ui::Pane::Clock &&
+                 state_.selection < static_cast<int>(state_.midi.size())) {
+        const auto slot = state_.midi[static_cast<std::size_t>(state_.selection)].slot;
+        router_.set_clock(slot, !router_.clock_enabled(slot));
+      } else if (state_.pane == ui::Pane::Library) {
+        if (state_.selection >= static_cast<int>(state_.local.size())) {
+          const auto index = static_cast<std::size_t>(state_.selection - state_.local.size());
+          if (index < state_.catalog.size()) {
+            auto path = library_.package_path(state_.catalog[index].id,
+                                              state_.catalog[index].version);
+            if (!path) {
+              set_message(path.error().message, true);
+            } else {
+              queue_net({.command = NetCommand::Download,
+                         .entry = state_.catalog[index],
+                         .destination = *path});
+              set_message("Download queued");
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 0x4C:  // Delete: clear routes
+      if (state_.pane == ui::Pane::Routes) {
+        router_.clear();
+        set_message("Routes cleared");
+      }
+      break;
+    default:
+      break;
+  }
+
+  switch (event.character) {
+    case ' ':
+      if (state_.pane == ui::Pane::Clock) {
+        toggle_clock();
+      } else if (state_.pane == ui::Pane::Devices &&
+                 state_.selection < static_cast<int>(state_.midi.size())) {
+        const auto slot = state_.midi[static_cast<std::size_t>(state_.selection)].slot;
+        router_.set_clock(slot, !router_.clock_enabled(slot));
+      }
+      break;
+    case '+':
+      if (state_.pane == ui::Pane::Clock) set_bpm(5);
+      break;
+    case '-':
+      if (state_.pane == ui::Pane::Clock) set_bpm(-5);
+      break;
+    case 't':
+    case 'T':
+      if (state_.pane == ui::Pane::Clock) {
+        router_.set_clock_all(!router_.any_clock());
+      }
+      break;
+    case '/':
+      if (state_.pane == ui::Pane::Library) state_.editing_filter = true;
+      break;
+    case 'r':
+    case 'R':
+      if (state_.pane == ui::Pane::Library) {
+        queue_net({.command = NetCommand::Refresh, .entry = {}, .destination = {}});
+        set_message("Refreshing catalog...");
+      }
+      break;
+    case 'd':
+    case 'D':
+      if (state_.pane == ui::Pane::Devices &&
+          state_.selection < static_cast<int>(state_.midi.size())) {
+        start_flash(platform::FlashKind::DownloadMode,
+                    state_.midi[static_cast<std::size_t>(state_.selection)].slot, {});
+      }
+      break;
+    case 'f':
+    case 'F':
+      if (state_.pane == ui::Pane::Devices &&
+          state_.selection < static_cast<int>(state_.midi.size())) {
+        open_packages(state_.midi[static_cast<std::size_t>(state_.selection)].slot);
+      }
+      break;
+    case 'm':
+    case 'M':
+      if (state_.pane == ui::Pane::Devices &&
+          state_.selection < static_cast<int>(state_.midi.size())) {
+        start_flash(platform::FlashKind::DownloadMode,
+                    state_.midi[static_cast<std::size_t>(state_.selection)].slot, {});
+      }
+      break;
+    default:
+      break;
+  }
+  dirty_ = true;
+}
+
+}  // namespace fm1
