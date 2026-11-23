@@ -60,6 +60,21 @@ Add `?detail=1` to include `size` and the sidecar `sha256` (null when no
 sidecar exists). This requires a stat/meta pass over every file and is much
 slower on SD.
 
+## `POST /catalog`
+
+Accepts a JSON firmware manifest in the same shape as the zoo feed: either a
+bare array or `{"firmwares":[...]}`. The device writes it to
+`fm1-card/firmwares.json` and atomically rebuilds `fm1-card/catalog.bin`.
+
+```sh
+curl --data-binary @firmwares.json http://<device>/catalog
+# {"ok":true,"entries":817}
+```
+
+Malformed JSON, an empty manifest, or a body over 4 MiB returns HTTP 400 and
+leaves the previous catalog untouched. `L` in the LIB pane performs the same
+import from a manifest already on the SD card.
+
 ## `GET /firmwares/info?name=<file>.fwsc`
 
 Returns metadata for one installed file, computing the SHA-256 on demand even

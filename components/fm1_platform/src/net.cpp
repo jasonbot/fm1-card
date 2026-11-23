@@ -26,6 +26,7 @@
 
 #include "fm1/package.hpp"
 #include "fm1/platform/file.hpp"
+#include "fm1/platform/library.hpp"
 #include "nvs_flash.h"
 
 namespace fm1::platform {
@@ -582,6 +583,96 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
   return httpd_resp_send(request, body.data(), body.size());
 }
 
+esp_err_t Net::upload_catalog(httpd_req_t* request) {
+  if (storage_ == nullptr || !storage_->mounted()) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
+    return ESP_FAIL;
+  }
+  if (request->content_len == 0 || request->content_len > 4 * 1024 * 1024) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "bad content length");
+    return ESP_FAIL;
+  }
+  (void)storage_->ensure_dir("fm1-card");
+  const std::string temp_rel = "fm1-card/firmwares.json.upload";
+  const std::string temp_path = storage_->path(temp_rel);
+  const std::string final_path = storage_->path(Library::manifest_path());
+  std::FILE* file = std::fopen(temp_path.c_str(), "wb");
+  if (file == nullptr) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "cannot create file");
+    return ESP_FAIL;
+  }
+  std::size_t remaining = request->content_len;
+  std::array<char, 2048> buffer{};
+  int timeouts = 0;
+  while (remaining > 0) {
+    const int got = httpd_req_recv(request, buffer.data(),
+                                   std::min<std::size_t>(remaining, buffer.size()));
+    if (got == HTTPD_SOCK_ERR_TIMEOUT) {
+      if (++timeouts > 10) {
+        std::fclose(file);
+        std::remove(temp_path.c_str());
+        set_cors(request);
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "upload timed out");
+        return ESP_FAIL;
+      }
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+    timeouts = 0;
+    if (got <= 0) {
+      std::fclose(file);
+      std::remove(temp_path.c_str());
+      set_cors(request);
+      httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "upload interrupted");
+      return ESP_FAIL;
+    }
+    if (std::fwrite(buffer.data(), 1, static_cast<std::size_t>(got), file) !=
+        static_cast<std::size_t>(got)) {
+      std::fclose(file);
+      std::remove(temp_path.c_str());
+      set_cors(request);
+      httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "short write");
+      return ESP_FAIL;
+    }
+    remaining -= static_cast<std::size_t>(got);
+  }
+  std::fclose(file);
+
+  auto entries = build_catalog_cache(*storage_, temp_rel);
+  if (!entries) {
+    std::remove(temp_path.c_str());
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, entries.error().message.c_str());
+    return ESP_FAIL;
+  }
+  std::remove(final_path.c_str());
+  if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
+    std::remove(temp_path.c_str());
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "cannot save manifest");
+    return ESP_FAIL;
+  }
+  note_library_change();
+  set_cors(request);
+  httpd_resp_set_type(request, "application/json");
+  const std::string body = "{\"ok\":true,\"entries\":" + std::to_string(*entries) + "}";
+  return httpd_resp_send(request, body.data(), body.size());
+}
+
+Result<std::size_t> Net::load_local_catalog() {
+  if (storage_ == nullptr || !storage_->mounted()) return fail("no SD card");
+  for (const auto& path : {Library::manifest_path(), std::string("firmwares.json")}) {
+    struct stat info {};
+    if (stat(storage_->path(path).c_str(), &info) == 0 && info.st_size > 0) {
+      return build_catalog_cache(*storage_, path);
+    }
+  }
+  return fail("no local manifest; upload fm1-card/firmwares.json");
+}
+
 Result<void> Net::start_http() {
   if (http_ != nullptr) return {};
   const auto log = [&](std::string_view text) {
@@ -592,7 +683,7 @@ Result<void> Net::start_http() {
   start_discovery();
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
-  config.max_uri_handlers = 8;
+  config.max_uri_handlers = 10;
   config.max_open_sockets = 4;
   config.stack_size = 20480;
   config.lru_purge_enable = true;
@@ -641,6 +732,20 @@ Result<void> Net::start_http() {
   options.method = HTTP_OPTIONS;
   options.handler = options_handler;
   httpd_register_uri_handler(server, &options);
+
+  httpd_uri_t catalog = status;
+  catalog.uri = "/catalog";
+  catalog.method = HTTP_POST;
+  catalog.handler = [](httpd_req_t* request) {
+    return static_cast<Net*>(request->user_ctx)->upload_catalog(request);
+  };
+  httpd_register_uri_handler(server, &catalog);
+
+  httpd_uri_t catalog_options{};
+  catalog_options.uri = "/catalog";
+  catalog_options.method = HTTP_OPTIONS;
+  catalog_options.handler = options_handler;
+  httpd_register_uri_handler(server, &catalog_options);
 
   log("http/udp started on 80/8135\n");
   return {};

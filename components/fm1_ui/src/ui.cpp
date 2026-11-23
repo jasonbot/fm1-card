@@ -366,7 +366,7 @@ void Ui::footer(const UiState& state) {
         hint1 = "TYPE   ENTER apply   ESC cancel";
       } else {
         hint1 = "Fn ;/. select  Ctrl ;/. page";
-        hint2 = "T dev C chip H hoard /filt R rel";
+        hint2 = "T dev C chip H hoard L local R rel";
       }
       break;
     case Pane::System:

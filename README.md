@@ -55,6 +55,8 @@ While Wi-Fi is connected, the device answers UDP discovery on port `8135`
 - `GET /firmwares` — installed package names; `?detail=1` adds size/SHA-256
 - `GET /firmwares/info?name=...` — size, hash, product, device/variant for one file
 - `POST /firmwares?name=<file>.fwsc` — upload/overwrite a package
+- `POST /catalog` — upload a JSON firmware manifest; atomically rebuilds the
+  catalog cache and saves it as `fm1-card/firmwares.json`
 
 See [`docs/api.md`](docs/api.md) for examples. CORS is enabled for browser
 frontends; native apps can ignore it.
@@ -124,8 +126,9 @@ ctest --test-dir build-tests --output-on-failure
 ```
 /sdcard/
   fm1-card/
-    config.json              # Wi-Fi and catalog settings (created on first boot)
-    catalog.bin              # compact catalog cache
+    config.json              # Wi-Fi, device name and catalog settings
+    firmwares.json           # optional local catalog manifest
+    catalog.bin              # compact catalog cache built from the manifest/feed
     firmwares/*.fwsc         # downloaded or imported packages
     backups/*.bin            # full-flash backups before rescue-bootloader work
     logs/fm1-card.log        # optional
@@ -152,6 +155,14 @@ scripts/bootstrap-sd.sh /run/media/$USER/FM1CARD \
 It creates `fm1-card/{firmwares,backups,logs}`, writes `config.json` and a
 short on-card README, and copies any `*.fwsc` from `--import`. Existing
 config and packages are kept unless `--force` is given.
+
+A local firmware manifest can be dropped at `fm1-card/firmwares.json` (bare
+array or `{"firmwares":[...]}`). Press `L` in the Library to rebuild the catalog
+cache from it. The same file can be uploaded with:
+
+```sh
+curl --data-binary @firmwares.json http://fm1-card/catalog
+```
 
 `config.json` is read at boot. You can also configure Wi-Fi on the device:
 open the **SYS** pane and press `W`, pick a network, type the password, and
@@ -183,7 +194,8 @@ The footer always shows the keys that work on the current screen.
   `N` edits the device name (default `Cardputer`, 32 chars, edges trimmed);
   `W` opens the Wi-Fi scanner/password dialog (`R` rescans, `Esc` cancels,
   `Enter` selects).
-- **Library**: `R` refreshes the catalog (Wi-Fi), `/` edits the text filter,
+- **Library**: `R` refreshes the catalog from the configured URL (Wi-Fi),
+  `L` reloads `fm1-card/firmwares.json` (or `firmwares.json`), `/` edits the text filter,
   `T` cycles the device filter (ALL / FM-1 / SMK-37), `C` cycles the chip
   filter (ALL / new / old) on FM-1 and the variant filter (ALL / Pro /
   Elite / MKE-P37) on SMK-37, `Enter` downloads the selected catalog entry.

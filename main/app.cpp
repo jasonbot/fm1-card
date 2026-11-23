@@ -158,6 +158,7 @@ void App::ui_loop() {
   for (;;) {
     while (auto event = keyboard_.poll()) handle_key(*event);
 
+    if (net_.take_library_change()) library_dirty_ = true;
     if (library_dirty_.exchange(false)) refresh_library();
 
     const uint64_t now = esp_timer_get_time() / 1000;
@@ -439,6 +440,19 @@ void App::net_loop() {
           set_message("Device name: " + saved.error().message, true, 15'000);
         } else {
           set_message("Device name: " + job.name, false, 8'000);
+        }
+        break;
+      }
+      case NetCommand::LoadLocalCatalog: {
+        set_message("Catalog: reading local manifest...", false, 30'000);
+        auto loaded = net_.load_local_catalog();
+        if (!loaded) {
+          set_message(loaded.error().message, true, 15'000);
+        } else {
+          catalog_offset_ = 0;
+          library_dirty_ = true;
+          set_message("Local manifest: " + std::to_string(*loaded) + " entries", false,
+                      10'000);
         }
         break;
       }
@@ -1138,6 +1152,18 @@ void App::handle_key(const platform::KeyEvent& event) {
           state_.selection < static_cast<int>(state_.midi.size())) {
         start_flash(platform::FlashKind::DownloadMode,
                     state_.midi[static_cast<std::size_t>(state_.selection)].slot, {});
+      }
+      break;
+    case 'l':
+    case 'L':
+      if (state_.pane == ui::Pane::Library) {
+        queue_net({.command = NetCommand::LoadLocalCatalog,
+                   .entry = {},
+                   .destination = {},
+                   .ssid = {},
+                   .password = {},
+                   .name = {}});
+        set_message("Loading local catalog manifest...", false, 10'000);
       }
       break;
     case 'h':

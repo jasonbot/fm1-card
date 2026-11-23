@@ -203,6 +203,59 @@ Result<std::size_t> Library::local_count() {
   return found;
 }
 
+Result<std::size_t> build_catalog_cache(Storage& storage, std::string_view json_relative) {
+  if (!storage.mounted()) return fail("no SD card");
+  const auto input_path = storage.path(json_relative);
+  std::FILE* input = std::fopen(input_path.c_str(), "rb");
+  if (input == nullptr) return fail("cannot open " + std::string(json_relative));
+
+  const auto final_path = storage.path(Library::cache_path());
+  const auto temp_path = final_path + ".tmp";
+  std::FILE* output = std::fopen(temp_path.c_str(), "wb");
+  if (output == nullptr) {
+    std::fclose(input);
+    return fail("cannot create catalog temp file");
+  }
+
+  std::size_t entries = 0;
+  bool write_ok = true;
+  catalog::StreamParser parser([&](catalog::Entry&& entry) {
+    const auto record = catalog::encode_record(entry);
+    const uint32_t length = static_cast<uint32_t>(record.size());
+    const uint8_t header[4]{static_cast<uint8_t>(length),
+                            static_cast<uint8_t>(length >> 8),
+                            static_cast<uint8_t>(length >> 16),
+                            static_cast<uint8_t>(length >> 24)};
+    if (std::fwrite(header, 1, 4, output) != 4 ||
+        std::fwrite(record.data(), 1, record.size(), output) != record.size()) {
+      write_ok = false;
+    }
+    ++entries;
+  });
+
+  std::array<char, 4096> buffer{};
+  while (const auto got = std::fread(buffer.data(), 1, buffer.size(), input)) {
+    parser.feed(std::span<const char>(buffer.data(), got));
+  }
+  std::fclose(input);
+  auto finish = parser.finish();
+  std::fflush(output);
+  std::fclose(output);
+
+  if (!write_ok || !finish || entries == 0) {
+    std::remove(temp_path.c_str());
+    if (!finish) return fail(finish.error().message);
+    if (entries == 0) return fail("manifest has no firmware entries");
+    return fail("could not write the catalog cache");
+  }
+  std::remove(final_path.c_str());
+  if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
+    std::remove(temp_path.c_str());
+    return fail("cannot replace the catalog cache");
+  }
+  return entries;
+}
+
 Result<std::string> Library::package_path(std::string_view id, std::string_view version) {
   (void)storage_.ensure_dir(firmwares_dir());
   std::string name = sanitise(id);

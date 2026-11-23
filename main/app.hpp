@@ -31,7 +31,7 @@ class App {
   void net_loop();
 
  private:
-  enum class NetCommand { Start, Refresh, Download, Hoard, WifiScan, WifiConnect, SaveDeviceName };
+  enum class NetCommand { Start, Refresh, Download, Hoard, WifiScan, WifiConnect, SaveDeviceName, LoadLocalCatalog };
   struct NetJob {
     NetCommand command = NetCommand::Start;
     catalog::Entry entry;
