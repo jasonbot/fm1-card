@@ -26,6 +26,7 @@ idf_component_register(
     freertos
   PRIV_REQUIRES
     esp_driver_spi
+    esp_hw_support
     esp_driver_i2c
     esp_driver_gpio
     esp_adc

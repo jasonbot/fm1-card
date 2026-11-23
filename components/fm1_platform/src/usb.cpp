@@ -10,6 +10,7 @@
 #include <semaphore>
 
 #include "esp_heap_caps.h"
+#include "esp_private/usb_phy.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -110,11 +111,24 @@ Result<void> UsbHost::start() {
   probe_queue_ = xQueueCreate(16, sizeof(uint8_t));
   if (probe_queue_ == nullptr) return fail("no probe queue");
 
+  // TinyUSB's ESP32-S3 port needs the OTG PHY claimed for host mode before
+  // tuh_rhport_init(). The BSP does this in usb_init(); we own the integration.
+  static usb_phy_handle_t phy = nullptr;
+  usb_phy_config_t phy_config{};
+  phy_config.controller = USB_PHY_CTRL_OTG;
+  phy_config.target = USB_PHY_TARGET_INT;
+  phy_config.otg_mode = USB_OTG_MODE_HOST;
+  phy_config.otg_speed = USB_PHY_SPEED_UNDEFINED;
+  esp_err_t phy_error = usb_new_phy(&phy_config, &phy);
+  if (phy_error != ESP_OK) {
+    ESP_LOGE(kTag, "usb_new_phy(host) failed: %s", esp_err_to_name(phy_error));
+    return fail(std::string("USB PHY host mode failed: ") + esp_err_to_name(phy_error));
+  }
   tusb_rhport_init_t init{};
   init.role = TUSB_ROLE_HOST;
   init.speed = TUSB_SPEED_FULL;
   if (!tusb_init(0, &init)) {
-    return fail("TinyUSB host init failed");
+    return fail("TinyUSB host init failed after PHY claim");
   }
   TaskHandle_t usb_handle = nullptr;
   xTaskCreatePinnedToCore(
