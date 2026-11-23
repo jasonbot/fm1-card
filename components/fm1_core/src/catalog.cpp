@@ -95,13 +95,12 @@ bool works_on_new_chip(const Entry& entry) {
 }
 
 std::string package_url(const Entry& entry) {
+  // The firmware-zoo feed publishes absolute package URLs. Relative paths are
+  // resolved against the zoo root, not any of the older mirrors.
   if (entry.pkg.starts_with("http://") || entry.pkg.starts_with("https://")) {
     return entry.pkg;
   }
-  if (entry.pkg.starts_with("fw/")) {
-    return "https://thefirmwarehub.com/" + entry.pkg;
-  }
-  return "https://thefirmwarehub.com/fw/" + entry.pkg;
+  return "https://www.jasonscheirer.com/firmware-zoo/" + entry.pkg;
 }
 
 std::vector<uint8_t> encode_record(const Entry& entry) {

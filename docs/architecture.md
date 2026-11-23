@@ -75,7 +75,7 @@ The callback never blocks and never writes to the display.
 | TinyUSB host + hub + MIDI ×8 + MSC | ~30 000 |
 | MIDI RX/TX FIFOs (8 × 1 KB / 2 KB) | ~24 000 |
 | lwjson stream parser | ~1 000 |
-| catalog page (60 entries) | ~30 000 |
+| catalog page (60 entries) | ~42 000 |
 | Wi-Fi + lwIP + TLS (transient) | ~80 000 |
 | app/queues/stacks | ~40 000 |
 

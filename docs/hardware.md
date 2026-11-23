@@ -82,7 +82,7 @@ Consequences for the design:
 ## SD card
 
 SPI mode on SPI3 (G40/39/14/12). FATFS mount at `/sdcard`. Keep the card
-FAT32 or exFAT. The catalog cache is ~200 KB; packages are ~600 KB each;
+FAT32 or exFAT. The catalog cache is ~450 KB (746 entries); packages are ~600 KB each;
 backups are 1 MiB each.
 
 ## Wi-Fi
