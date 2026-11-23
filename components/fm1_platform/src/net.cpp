@@ -267,6 +267,75 @@ Result<void> Net::start(Storage& storage, const Config& config) {
   return {};
 }
 
+esp_err_t Net::firmware_info(httpd_req_t* request) {
+  if (storage_ == nullptr || !storage_->mounted()) {
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
+    return ESP_FAIL;
+  }
+  const std::size_t query_len = httpd_req_get_url_query_len(request);
+  std::string name;
+  if (query_len > 0 && query_len < 512) {
+    std::string query(query_len + 1, '\0');
+    if (httpd_req_get_url_query_str(request, query.data(), query.size()) == ESP_OK) {
+      char value[160]{};
+      if (httpd_query_key_value(query.c_str(), "name", value, sizeof(value)) == ESP_OK) {
+        name = sanitize_firmware_name(url_decode(value));
+      }
+    }
+  }
+  if (name.empty()) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "name=*.fwsc required");
+    return ESP_FAIL;
+  }
+  std::string path;
+  std::string dir;
+  for (const auto& candidate : {"fm1-card/firmwares", "firmwares"}) {
+    const std::string candidate_path =
+        storage_->path(std::string(candidate) + "/" + name);
+    struct stat info {};
+    if (stat(candidate_path.c_str(), &info) == 0 && info.st_size > 0) {
+      path = candidate_path;
+      dir = candidate;
+      break;
+    }
+  }
+  if (path.empty()) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_404_NOT_FOUND, "firmware not found");
+    return ESP_FAIL;
+  }
+  struct stat info {};
+  if (stat(path.c_str(), &info) != 0) {
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "stat failed");
+    return ESP_FAIL;
+  }
+  auto digest = sha256_file(path, nullptr);
+  FileReader reader;
+  std::string product;
+  if (reader.open(path)) {
+    auto parsed = package::inspect(reader);
+    if (parsed) product = parsed->product;
+  }
+  const auto device = catalog::device_from_product(product);
+  const auto variant = catalog::smk_variant_from_product(product);
+  const char* variant_name = variant == catalog::SmkVariant::Elite   ? "elite"
+                             : variant == catalog::SmkVariant::Mke   ? "mke"
+                             : variant == catalog::SmkVariant::Pro   ? "pro"
+                                                                    : "all";
+  std::string body;
+  body.reserve(400);
+  body = "{\"name\":\"" + json_escape(name) + "\",\"dir\":\"" + json_escape(dir) +
+         "\",\"size\":" + std::to_string(info.st_size) + ",\"sha256\":";
+  body += digest ? "\"" + *digest + "\"" : "null";
+  body += ",\"product\":\"" + json_escape(product) + "\",\"device\":\"" +
+          (device == catalog::Device::Smk37 ? "smk37" : "fm1") +
+          "\",\"variant\":\"" + variant_name + "\"}";
+  set_cors(request);
+  httpd_resp_set_type(request, "application/json");
+  return httpd_resp_send(request, body.data(), body.size());
+}
+
 esp_err_t Net::list_firmwares(httpd_req_t* request) {
   if (storage_ == nullptr || !storage_->mounted()) {
     httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
@@ -423,9 +492,11 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
     return ESP_FAIL;
   }
   std::size_t written = 0;
+  std::string digest;
   if (auto sha = sha256_file(final_path, &written); sha) {
+    digest = *sha;
     if (std::FILE* meta = std::fopen((final_path + ".meta").c_str(), "wb")) {
-      std::fprintf(meta, "local:%s\n%s\n%zu\n", name.c_str(), sha->c_str(), written);
+      std::fprintf(meta, "local:%s\n%s\n%zu\n", name.c_str(), digest.c_str(), written);
       std::fclose(meta);
     }
   }
@@ -434,8 +505,9 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
   set_cors(request);
   httpd_resp_set_type(request, "application/json");
   std::string body = "{\"ok\":true,\"name\":\"" + json_escape(name) +
-                     "\",\"product\":\"" + json_escape(layout->product) +
-                     "\",\"size\":" + std::to_string(written) + "}";
+                     "\",\"size\":" + std::to_string(written) +
+                     ",\"sha256\":" + (digest.empty() ? "null" : "\"" + digest + "\"") +
+                     ",\"product\":\"" + json_escape(layout->product) + "\"}";
   return httpd_resp_send(request, body.data(), body.size());
 }
 
@@ -468,6 +540,14 @@ Result<void> Net::start_http() {
   httpd_uri_t root = status;
   root.uri = "/";
   httpd_register_uri_handler(server, &root);
+
+  httpd_uri_t info = status;
+  info.uri = "/firmwares/info";
+  info.method = HTTP_GET;
+  info.handler = [](httpd_req_t* request) {
+    return static_cast<Net*>(request->user_ctx)->firmware_info(request);
+  };
+  httpd_register_uri_handler(server, &info);
 
   httpd_uri_t list = status;
   list.uri = "/firmwares";

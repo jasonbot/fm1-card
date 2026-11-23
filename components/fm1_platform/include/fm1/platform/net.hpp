@@ -38,6 +38,7 @@ class Net {
   }
   esp_err_t list_firmwares(httpd_req_t* request);
   esp_err_t upload_firmware(httpd_req_t* request);
+  esp_err_t firmware_info(httpd_req_t* request);
   [[nodiscard]] std::string status_json() const;
   [[nodiscard]] bool wifi_connected() const;
   [[nodiscard]] bool wifi_configured() const { return configured_.load(); }

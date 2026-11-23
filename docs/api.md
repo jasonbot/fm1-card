@@ -53,6 +53,19 @@ Add `?detail=1` to include `size` and the sidecar `sha256` (null when no
 sidecar exists). This requires a stat/meta pass over every file and is much
 slower on SD.
 
+## `GET /firmwares/info?name=<file>.fwsc`
+
+Returns metadata for one installed file, computing the SHA-256 on demand even
+when no sidecar exists:
+
+```json
+{"name":"sloop-2.8.5.fwsc","dir":"fm1-card/firmwares","size":610076,
+ "sha256":"b044...","product":"FM-1_900","device":"fm1","variant":"all"}
+```
+
+This is the reliable duplicate check: hash the local file and compare. Listing
+without `detail=1` does not include hashes.
+
 ## `POST /firmwares?name=<file>.fwsc`
 
 Uploads a raw `.fwsc` body. The name must end in `.fwsc`; path separators are
