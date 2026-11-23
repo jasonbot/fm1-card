@@ -66,6 +66,26 @@ The USB port is a host port in the running application, so the USB serial
 console disappears once `fm1-card` starts. Use the display, the SD log, or
 the optional Wi-Fi console for diagnostics.
 
+### Flashing and recovery
+
+The Cardputer-Adv enters ROM download mode with the side power switch **OFF**:
+hold **G0**, connect USB-C to the computer, then release G0. It should appear
+as `/dev/ttyACM0` (USB ID `303a:1001`). From a built tree:
+
+```sh
+python -m esptool --chip esp32s3 -p /dev/ttyACM0 -b 460800 \
+  --before default-reset --after hard-reset write-flash \
+  --flash-mode dio --flash-size 8MB --flash-freq 80m \
+  0x0 build/bootloader/bootloader.bin \
+  0x8000 build/partition_table/partition-table.bin \
+  0x10000 build/fm1-card.bin
+```
+
+Or `idf.py -p /dev/ttyACM0 flash`. The flash is verified by esptool. On the
+first boot after flashing, `fm1-card` claims the OTG PHY for host mode and
+`/dev/ttyACM0` disappears — that is the host port working, not a crash. To
+reflash, repeat the G0 download-mode sequence.
+
 Native tests (no hardware, no ESP-IDF):
 
 ```sh
