@@ -116,6 +116,26 @@ ctest --test-dir build-tests --output-on-failure
 }
 ```
 
+### Bootstrap the card
+
+```sh
+scripts/bootstrap-sd.sh /run/media/$USER/FM1CARD \
+  --import ../fm1-grid/fm1-firmware/firmware
+```
+
+It creates `fm1-card/{firmwares,backups,logs}`, writes `config.json` and a
+short on-card README, and copies any `*.fwsc` from `--import`. Existing
+config and packages are kept unless `--force` is given.
+
+For Wi-Fi, either edit `config.json` or rerun with credentials (prefer the
+environment/prompt over the command-line flag so the password is not in your
+shell history):
+
+```sh
+FM1_WIFI_SSID='your-ssid' FM1_WIFI_PASSWORD='your-password' \
+  scripts/bootstrap-sd.sh /run/media/$USER/FM1CARD --force
+```
+
 ## Keys
 
 The footer always shows the keys that work on the current screen.
