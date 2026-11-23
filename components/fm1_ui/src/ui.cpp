@@ -272,6 +272,27 @@ void Ui::scrollbar(int first, int visible, int total, int y, int height) {
   canvas_.fill(x + 2, thumb_y, w - 4, thumb, 7);
 }
 
+void Ui::hoard(const UiState& state) {
+  if (!state.hoard_active) return;
+  canvas_.clear(0);
+  canvas_.fill(0, 0, 240, 11, 3);
+  canvas_.text(0, 0, "HOARD", 11);
+  const int overall = state.hoard_total == 0
+                          ? 0
+                          : static_cast<int>(state.hoard_done * 100 / state.hoard_total);
+  canvas_.textf(30, 0, 11, "%zu/%zu", state.hoard_done, state.hoard_total);
+  canvas_.text(0, 2, overall == 0 ? "Refreshing catalog..." : "Downloading all firmware",
+               1);
+  canvas_.fill(5, 33, 230, 10, 8);
+  if (overall > 0) canvas_.fill(5, 33, 230 * overall / 100, 10, 4);
+  canvas_.textf(36, 3, 1, "%3d%%", overall);
+  canvas_.text_clipped(0, 5, 40, state.hoard_current, 1);
+  canvas_.textf(0, 7, 2, "Current file: %3d%%", state.hoard_percent);
+  canvas_.textf(0, 8, state.hoard_failed ? 6 : 2, "Failed: %zu", state.hoard_failed);
+  canvas_.text(0, 9, "Do not power off", 6);
+  canvas_.text(0, 10, "ESC cancels", 2);
+}
+
 void Ui::footer(const UiState& state) {
   if (!state.message.empty()) {
     canvas_.fill(0, 99, 240, 11, state.message_error ? 6 : 5);
@@ -300,7 +321,7 @@ void Ui::footer(const UiState& state) {
         hint1 = "TYPE   ENTER apply   ESC cancel";
       } else {
         hint1 = "Fn ;/. select  Ctrl ;/. page";
-        hint2 = "T dev  C chip/var  /filt  R rel";
+        hint2 = "T dev C chip H hoard /filt R rel";
       }
       break;
   }
@@ -320,6 +341,7 @@ void Ui::draw(const UiState& state) {
   flash(state);
   popup(state);
   footer(state);
+  hoard(state);
 }
 
 }  // namespace fm1::ui

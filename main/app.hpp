@@ -31,14 +31,14 @@ class App {
   void net_loop();
 
  private:
-  enum class NetCommand { Start, Refresh, Download };
+  enum class NetCommand { Start, Refresh, Download, Hoard };
   struct NetJob {
     NetCommand command = NetCommand::Start;
     catalog::Entry entry;
     std::string destination;
   };
 
-  enum class PopupKind { None, Packages, Sinks, MscActions };
+  enum class PopupKind { None, Packages, Sinks, MscActions, HoardConfirm };
   struct Popup {
     PopupKind kind = PopupKind::None;
     std::string title;
@@ -80,6 +80,17 @@ class App {
   Popup popup_;
 
   std::mutex message_lock_;
+  std::mutex hoard_lock_;
+  std::atomic<bool> hoard_cancel_{false};
+  struct HoardState {
+    bool active = false;
+    std::size_t done = 0;
+    std::size_t total = 0;
+    std::size_t failed = 0;
+    std::string current;
+    int percent = 0;
+    bool error = false;
+  } hoard_;
   std::mutex net_lock_;
   std::condition_variable net_wake_;
   std::deque<NetJob> net_jobs_;

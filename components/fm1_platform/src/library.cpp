@@ -101,6 +101,28 @@ Result<std::size_t> Library::count(const LibraryFilter& filter) {
   return total;
 }
 
+Result<void> Library::for_each(const std::function<bool(const catalog::Entry&)>& fn) {
+  if (!storage_.mounted()) return fail("no SD card");
+  std::FILE* file = std::fopen(storage_.path(cache_path()).c_str(), "rb");
+  if (file == nullptr) return { };
+  for (;;) {
+    auto record = read_record(file);
+    if (!record) {
+      std::fclose(file);
+      return std::unexpected(record.error());
+    }
+    if (!*record) break;
+    auto entry = catalog::decode_record(**record);
+    if (!entry) {
+      std::fclose(file);
+      return std::unexpected(entry.error());
+    }
+    if (fn && !fn(*entry)) break;
+  }
+  std::fclose(file);
+  return {};
+}
+
 Result<std::optional<catalog::Entry>> Library::find(std::string_view id) {
   if (!storage_.mounted()) return std::optional<catalog::Entry>{};
   std::FILE* file = std::fopen(storage_.path(cache_path()).c_str(), "rb");

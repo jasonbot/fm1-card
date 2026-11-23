@@ -46,6 +46,13 @@ struct UiState {
   bool message_error = false;
   std::string detail;
   bool popup = false;
+  bool hoard_active = false;
+  bool hoard_error = false;
+  std::size_t hoard_done = 0;
+  std::size_t hoard_total = 0;
+  std::size_t hoard_failed = 0;
+  std::string hoard_current;
+  int hoard_percent = 0;
   std::string popup_title;
   std::vector<std::string> popup_items;
   int popup_selection = 0;
@@ -66,6 +73,7 @@ class Ui {
   void library(const UiState& state, int first_row, int rows);
   void flash(const UiState& state);
   void popup(const UiState& state);
+  void hoard(const UiState& state);
   void scrollbar(int first, int visible, int total, int y, int height);
   void footer(const UiState& state);
 

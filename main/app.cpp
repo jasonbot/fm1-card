@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <unordered_set>
 #include <chrono>
 #include <cstdio>
 
@@ -225,6 +226,115 @@ void App::net_loop() {
         }
         break;
       }
+      case NetCommand::Hoard: {
+        hoard_cancel_.store(false);
+        {
+          std::lock_guard lock(hoard_lock_);
+          hoard_ = HoardState{};
+          hoard_.active = true;
+          hoard_.current = "refreshing catalog";
+        }
+        set_message("HOARD: refreshing catalog...", false, 0);
+        auto refreshed = net_.refresh_catalog([&](const platform::NetProgress& progress) {
+          std::lock_guard lock(hoard_lock_);
+          if (progress.total > 0) {
+            hoard_.percent = static_cast<int>(progress.received * 100 / progress.total);
+          }
+        });
+        if (!refreshed) {
+          {
+            std::lock_guard lock(hoard_lock_);
+            hoard_.active = false;
+            hoard_.error = true;
+          }
+          set_message("HOARD failed: " + refreshed.error().message, true, 20'000);
+          break;
+        }
+        auto total = library_.count(platform::LibraryFilter{});
+        if (!total) {
+          std::lock_guard lock(hoard_lock_);
+          hoard_.active = false;
+          hoard_.error = true;
+          set_message("HOARD failed: cannot read catalog", true, 20'000);
+          break;
+        }
+        {
+          std::lock_guard lock(hoard_lock_);
+          hoard_.total = *total;
+          hoard_.current = "starting";
+        }
+        std::size_t done = 0;
+        std::size_t failed = 0;
+        std::size_t consecutive = 0;
+        std::unordered_set<std::string> seen;
+        auto walked = library_.for_each([&](const catalog::Entry& entry) {
+          auto destination = library_.package_path(entry.id, entry.version);
+          if (!destination) {
+            ++done;
+            ++failed;
+            ++consecutive;
+          } else if (!seen.insert(*destination).second) {
+            ++done;
+          } else {
+            {
+              std::lock_guard lock(hoard_lock_);
+              hoard_.current = entry.name;
+              hoard_.percent = 0;
+            }
+            bool downloaded = false;
+            std::string error;
+            for (int attempt = 0; attempt < 2 && !downloaded; ++attempt) {
+              auto result = net_.download(
+                  entry, *destination, [&](const platform::NetProgress& progress) {
+                    if (progress.total > 0) {
+                      std::lock_guard lock(hoard_lock_);
+                      hoard_.percent =
+                          static_cast<int>(progress.received * 100 / progress.total);
+                    }
+                  });
+              if (result) {
+                downloaded = true;
+              } else {
+                error = result.error().message;
+              }
+            }
+            ++done;
+            if (!downloaded) {
+              ++failed;
+              ++consecutive;
+            } else {
+              consecutive = 0;
+            }
+            (void)error;
+          }
+          {
+            std::lock_guard lock(hoard_lock_);
+            hoard_.done = done;
+            hoard_.failed = failed;
+          }
+          dirty_ = true;
+          return !hoard_cancel_.load() && consecutive < 3;
+        });
+        {
+          std::lock_guard lock(hoard_lock_);
+          hoard_.active = false;
+          hoard_.error = !walked;
+          hoard_.done = done;
+          hoard_.failed = failed;
+        }
+        library_dirty_ = true;
+        if (!walked) {
+          set_message("HOARD stopped: catalog read error", true, 20'000);
+        } else if (hoard_cancel_.load()) {
+          set_message("HOARD cancelled after " + std::to_string(done) + " entries", false,
+                      20'000);
+        } else if (failed > 0) {
+          set_message("HOARD done: " + std::to_string(failed) + " failed", true, 20'000);
+        } else {
+          set_message("HOARD done: " + std::to_string(done) + " entries", false, 20'000);
+        }
+        break;
+      }
     }
     dirty_ = true;
   }
@@ -297,6 +407,16 @@ void App::sync_ui() {
     state_.message =
         (esp_timer_get_time() / 1000 < message_until_) ? message_ : std::string{};
     state_.message_error = message_is_error_;
+  }
+  {
+    std::lock_guard lock(hoard_lock_);
+    state_.hoard_active = hoard_.active;
+    state_.hoard_error = hoard_.error;
+    state_.hoard_done = hoard_.done;
+    state_.hoard_total = hoard_.total;
+    state_.hoard_failed = hoard_.failed;
+    state_.hoard_current = hoard_.current;
+    state_.hoard_percent = hoard_.percent;
   }
   state_.popup = popup_.kind != PopupKind::None;
   state_.popup_title = popup_.title;
@@ -422,6 +542,12 @@ void App::run_popup_action() {
                                                                                : "[ ] ") +
         label_of(state_.midi[static_cast<std::size_t>(popup_.selection)]);
     dirty_ = true;
+  } else if (popup_.kind == PopupKind::HoardConfirm) {
+    if (popup_.selection == 0) {
+      queue_net({.command = NetCommand::Hoard, .entry = {}, .destination = {}});
+      set_message("HOARD starting...", false, 10'000);
+    }
+    popup_ = {};
   } else if (popup_.kind == PopupKind::MscActions) {
     if (popup_.selection == 0) {
       start_flash(platform::FlashKind::Backup, static_cast<uint8_t>(popup_.context), {});
@@ -467,6 +593,15 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
 }
 
 void App::handle_key(const platform::KeyEvent& event) {
+  {
+    std::lock_guard lock(hoard_lock_);
+    if (hoard_.active) {
+      if (event.kind == platform::KeyKind::Press && event.code == 0x29) {
+        hoard_cancel_.store(true);  // Esc
+      }
+      return;
+    }
+  }
   if (popup_.kind != PopupKind::None) {
     handle_popup_key(event);
     return;
@@ -663,6 +798,17 @@ void App::handle_key(const platform::KeyEvent& event) {
           state_.selection < static_cast<int>(state_.midi.size())) {
         start_flash(platform::FlashKind::DownloadMode,
                     state_.midi[static_cast<std::size_t>(state_.selection)].slot, {});
+      }
+      break;
+    case 'h':
+    case 'H':
+      if (state_.pane == ui::Pane::Library) {
+        popup_ = {};
+        popup_.kind = PopupKind::HoardConfirm;
+        popup_.title = "HOARD ALL FIRMWARE?";
+        popup_.items = {"YES - download all", "NO - cancel"};
+        popup_.selection = 0;
+        dirty_ = true;
       }
       break;
     case 'f':

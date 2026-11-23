@@ -4,7 +4,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -44,6 +46,8 @@ class Library {
   Result<std::vector<catalog::Entry>> page(const LibraryFilter& filter, std::size_t offset,
                                            std::size_t limit);
   Result<std::size_t> count(const LibraryFilter& filter);
+  // Calls fn for every cached entry; stop early if fn returns false.
+  Result<void> for_each(const std::function<bool(const catalog::Entry&)>& fn);
   Result<std::optional<catalog::Entry>> find(std::string_view id);
   Result<std::vector<LocalPackage>> local_packages();
   Result<std::string> package_path(std::string_view id, std::string_view version);
