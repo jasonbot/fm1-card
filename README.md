@@ -155,7 +155,8 @@ The footer always shows the keys that work on the current screen.
   targets, `Enter` toggles one target.
 - **Library**: `R` refreshes the catalog (Wi-Fi), `/` edits the text filter,
   `T` cycles the device filter (ALL / FM-1 / SMK-37), `C` cycles the chip
-  filter (ALL / new / old), `Enter` downloads the selected catalog entry.
+  filter (ALL / new / old) on FM-1 and the variant filter (ALL / Pro /
+  Elite / MKE-P37) on SMK-37, `Enter` downloads the selected catalog entry.
   Flash from the Devices pane: select a unit, press `F`, pick the package.
 - The Cardputer has no dedicated arrow keys: `Fn`+`;` / `Fn`+`.` scroll up
   and down, `Fn`+`,` / `Fn`+`/` move left and right. In the Library, `Ctrl`+

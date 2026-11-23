@@ -237,6 +237,11 @@ void App::refresh_library(bool keep_shift) {
       return local.device != *library_filter_.device;
     });
   }
+  if (library_filter_.variant != catalog::SmkVariant::All) {
+    std::erase_if(state_.local, [&](const platform::LocalPackage& local) {
+      return local.variant != library_filter_.variant;
+    });
+  }
   library_filter_.text = state_.filter;
   auto total = library_.count(library_filter_);
   catalog_total_ = total.value_or(0);
@@ -252,10 +257,19 @@ void App::refresh_library(bool keep_shift) {
   } else {
     state_.device_filter = "SMK";
   }
-  switch (library_filter_.chip) {
-    case platform::ChipFilter::New: state_.chip_filter = "NEW"; break;
-    case platform::ChipFilter::Old: state_.chip_filter = "OLD"; break;
-    default: state_.chip_filter = "ALL"; break;
+  if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
+    switch (library_filter_.variant) {
+      case catalog::SmkVariant::Pro: state_.chip_filter = "PRO"; break;
+      case catalog::SmkVariant::Elite: state_.chip_filter = "ELITE"; break;
+      case catalog::SmkVariant::Mke: state_.chip_filter = "MKE"; break;
+      default: state_.chip_filter = "ALL"; break;
+    }
+  } else {
+    switch (library_filter_.chip) {
+      case platform::ChipFilter::New: state_.chip_filter = "NEW"; break;
+      case platform::ChipFilter::Old: state_.chip_filter = "OLD"; break;
+      default: state_.chip_filter = "ALL"; break;
+    }
   }
   const int max_index = static_cast<int>(state_.local.size() + state_.catalog.size()) - 1;
   if (state_.selection > max_index) state_.selection = std::max(0, max_index);
@@ -602,6 +616,7 @@ void App::handle_key(const platform::KeyEvent& event) {
         else if (*library_filter_.device == catalog::Device::Fm1)
           library_filter_.device = catalog::Device::Smk37;
         else library_filter_.device.reset();
+        library_filter_.variant = catalog::SmkVariant::All;
         catalog_offset_ = 0;
         state_.selection = 0;
         library_dirty_ = true;
@@ -610,11 +625,22 @@ void App::handle_key(const platform::KeyEvent& event) {
     case 'c':
     case 'C':
       if (state_.pane == ui::Pane::Library) {
-        library_filter_.chip = library_filter_.chip == platform::ChipFilter::All
-                                   ? platform::ChipFilter::New
-                                   : library_filter_.chip == platform::ChipFilter::New
-                                         ? platform::ChipFilter::Old
-                                         : platform::ChipFilter::All;
+        if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
+          library_filter_.variant =
+              library_filter_.variant == catalog::SmkVariant::All
+                  ? catalog::SmkVariant::Pro
+                  : library_filter_.variant == catalog::SmkVariant::Pro
+                        ? catalog::SmkVariant::Elite
+                        : library_filter_.variant == catalog::SmkVariant::Elite
+                              ? catalog::SmkVariant::Mke
+                              : catalog::SmkVariant::All;
+        } else {
+          library_filter_.chip = library_filter_.chip == platform::ChipFilter::All
+                                     ? platform::ChipFilter::New
+                                     : library_filter_.chip == platform::ChipFilter::New
+                                           ? platform::ChipFilter::Old
+                                           : platform::ChipFilter::All;
+        }
         catalog_offset_ = 0;
         state_.selection = 0;
         library_dirty_ = true;

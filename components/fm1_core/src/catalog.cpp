@@ -100,6 +100,28 @@ bool works_on_old_chip(const Entry& entry) {
          tags.find("any chip") != std::string::npos;
 }
 
+SmkVariant smk_variant_of(const Entry& entry) {
+  const auto tags = lower(entry.tags);
+  if (tags.find("smk-37 elite") != std::string::npos) return SmkVariant::Elite;
+  if (tags.find("mke-p37") != std::string::npos) return SmkVariant::Mke;
+  if (tags.find("smk-37 pro") != std::string::npos) return SmkVariant::Pro;
+  return SmkVariant::All;
+}
+
+SmkVariant smk_variant_from_product(std::string_view product) {
+  const auto text = lower(product);
+  if (text.find("elite") != std::string::npos) return SmkVariant::Elite;
+  if (text.find("mke-p37") != std::string::npos || text.find("mke") != std::string::npos)
+    return SmkVariant::Mke;
+  if (text.find("smk-37 pro") != std::string::npos || text.find("smk37 pro") != std::string::npos)
+    return SmkVariant::Pro;
+  return SmkVariant::All;
+}
+
+bool matches_smk_variant(const Entry& entry, SmkVariant variant) {
+  return variant == SmkVariant::All || smk_variant_of(entry) == variant;
+}
+
 std::string package_url(const Entry& entry) {
   // The firmware-zoo feed publishes absolute package URLs. Relative paths are
   // resolved against the zoo root, not any of the older mirrors.

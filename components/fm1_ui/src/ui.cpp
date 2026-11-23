@@ -300,7 +300,7 @@ void Ui::footer(const UiState& state) {
         hint1 = "TYPE   ENTER apply   ESC cancel";
       } else {
         hint1 = "Fn ;/. select  Ctrl ;/. page";
-        hint2 = "T dev  C chip  /filt  R rel  D dn  F fl";
+        hint2 = "T dev  C chip/var  /filt  R rel";
       }
       break;
   }

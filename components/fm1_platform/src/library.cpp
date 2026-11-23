@@ -65,6 +65,7 @@ Result<std::vector<catalog::Entry>> Library::page(const LibraryFilter& filter,
     if (filter.device && entry->device != *filter.device) continue;
     if (filter.chip == ChipFilter::New && !catalog::works_on_new_chip(*entry)) continue;
     if (filter.chip == ChipFilter::Old && !catalog::works_on_old_chip(*entry)) continue;
+    if (!catalog::matches_smk_variant(*entry, filter.variant)) continue;
     if (!catalog::matches(*entry, filter.text)) continue;
     if (matched++ >= offset) out.push_back(std::move(*entry));
   }
@@ -92,6 +93,7 @@ Result<std::size_t> Library::count(const LibraryFilter& filter) {
     if (filter.device && entry->device != *filter.device) continue;
     if (filter.chip == ChipFilter::New && !catalog::works_on_new_chip(*entry)) continue;
     if (filter.chip == ChipFilter::Old && !catalog::works_on_old_chip(*entry)) continue;
+    if (!catalog::matches_smk_variant(*entry, filter.variant)) continue;
     if (!catalog::matches(*entry, filter.text)) continue;
     ++total;
   }
@@ -147,6 +149,7 @@ Result<std::vector<LocalPackage>> Library::local_packages() {
                                  .name = std::move(display),
                                  .product = layout->product,
                                  .device = catalog::device_from_product(layout->product),
+                                 .variant = catalog::smk_variant_from_product(layout->product),
                                  .size = layout->file_size,
                                  .blocks = static_cast<uint8_t>(layout->blocks)});
     }

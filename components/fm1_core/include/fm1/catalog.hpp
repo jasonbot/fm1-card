@@ -18,6 +18,7 @@
 namespace fm1::catalog {
 
 enum class Device : uint8_t { Fm1, Smk37 };
+enum class SmkVariant : uint8_t { All, Pro, Elite, Mke };
 
 struct Entry {
   std::string id;
@@ -40,6 +41,10 @@ Device device_from_product(std::string_view product);
 bool matches(const Entry& entry, std::string_view needle);
 bool works_on_new_chip(const Entry& entry);
 bool works_on_old_chip(const Entry& entry);
+
+SmkVariant smk_variant_of(const Entry& entry);
+SmkVariant smk_variant_from_product(std::string_view product);
+bool matches_smk_variant(const Entry& entry, SmkVariant variant);
 
 // URL relative to the hub root.
 std::string package_url(const Entry& entry);

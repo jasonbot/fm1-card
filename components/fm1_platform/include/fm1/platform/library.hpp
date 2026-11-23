@@ -21,6 +21,7 @@ struct LocalPackage {
   std::string name;     // filename stem, human-readable fallback
   std::string product;
   catalog::Device device = catalog::Device::Fm1;
+  catalog::SmkVariant variant = catalog::SmkVariant::All;
   uint64_t size = 0;
   uint8_t blocks = 0;
 };
@@ -31,6 +32,7 @@ struct LibraryFilter {
   std::string text;
   std::optional<catalog::Device> device;
   ChipFilter chip = ChipFilter::All;
+  catalog::SmkVariant variant = catalog::SmkVariant::All;
 };
 
 class Library {
