@@ -187,6 +187,7 @@ std::string Net::status_json() const {
 Result<void> Net::start(Storage& storage, const Config& config) {
   storage_ = &storage;
   catalog_url_ = config.catalog_url;
+  set_device_name(config.device_name);
   ssid_ = config.ssid;
   configured_.store(!ssid_.empty());
   if (auto ready = ensure_wifi_driver(); !ready) {
@@ -692,8 +693,14 @@ void Net::discovery_loop() {
             esp_ip4addr_ntoa(&info.ip, ip, sizeof(ip));
           }
         }
-        char reply[96]{};
-        const int length = std::snprintf(reply, sizeof(reply), "fm1-card;%s;80\n", ip);
+        std::string name;
+        {
+          std::lock_guard lock(name_lock_);
+          name = device_name_;
+        }
+        char reply[160]{};
+        const int length = std::snprintf(reply, sizeof(reply), "fm1-card;%s;80;%s\n", ip,
+                                        name.c_str());
         sendto(discovery_socket_, reply, std::max(0, length), 0,
                reinterpret_cast<sockaddr*>(&from), from_len);
       }
@@ -715,6 +722,15 @@ Result<void> Net::connect_wifi() {
   ESP_LOGI(kTag, "Wi-Fi connected");
   state_.store(WifiState::Connected);
   return {};
+}
+
+void Net::set_device_name(std::string name) {
+  std::string clean = normalize_device_name(name);
+  for (char& c : clean) {
+    if (c == ';' || c == '\r' || c == '\n') c = '-';
+  }
+  std::lock_guard lock(name_lock_);
+  device_name_ = std::move(clean);
 }
 
 bool Net::wifi_connected() const {

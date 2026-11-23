@@ -32,6 +32,24 @@ std::string label_of(const platform::MidiPort& port) {
   return port.identity.empty() ? ("MIDI " + port.path) : port.identity;
 }
 
+std::string json_escape(std::string_view text) {
+  std::string out;
+  out.reserve(text.size() + 8);
+  for (const char c : text) {
+    switch (c) {
+      case '"': out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (static_cast<unsigned char>(c) >= 0x20) out.push_back(c);
+        break;
+    }
+  }
+  return out;
+}
+
 }  // namespace
 
 App::App(platform::Display& display, platform::Keyboard& keyboard,
@@ -94,7 +112,12 @@ void App::run() {
                       heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
     (void)storage_.write_text("fm1-card/logs/boot.log", boot);
   }
-  queue_net({.command = NetCommand::Start, .entry = {}, .destination = {}, .ssid = {}, .password = {}});
+  if (storage_.mounted()) {
+    if (auto config = platform::load_config(storage_); config) {
+      device_name_ = config->device_name;
+    }
+  }
+  queue_net({.command = NetCommand::Start, .entry = {}, .destination = {}, .ssid = {}, .password = {}, .name = {}});
 
   xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->ui_loop(); }, "fm1-ui",
                           8192, this, 4, nullptr, 1);
@@ -402,6 +425,23 @@ void App::net_loop() {
         }
         break;
       }
+      case NetCommand::SaveDeviceName: {
+        auto loaded = platform::load_config(storage_);
+        platform::Config config = loaded ? *loaded : platform::Config{};
+        config.device_name = job.name;
+        net_.set_device_name(job.name);
+        if (!storage_.mounted()) {
+          set_message("Device name active, not saved: no SD card", true, 15'000);
+          break;
+        }
+        auto saved = platform::save_config(storage_, config);
+        if (!saved) {
+          set_message("Device name: " + saved.error().message, true, 15'000);
+        } else {
+          set_message("Device name: " + job.name, false, 8'000);
+        }
+        break;
+      }
     }
     dirty_ = true;
   }
@@ -481,6 +521,7 @@ void App::sync_ui() {
   state_.wifi = net_.wifi_connected();
   state_.wifi_state = net_.wifi_state();
   state_.ssid = net_.wifi_ssid();
+  state_.device_name = device_name_;
   state_.ip = net_.local_ip();
   state_.rssi = net_.wifi_rssi();
   state_.sd_mounted = storage_.mounted();
@@ -527,6 +568,12 @@ void App::sync_ui() {
     popup_.items.push_back(std::string(wifi_password_.size(), '*') + "_");
     popup_.items.push_back("ENTER connect   ESC back");
     popup_.selection = 0;
+  } else if (popup_.kind == PopupKind::DeviceName) {
+    popup_.title = "DEVICE NAME";
+    popup_.items.clear();
+    popup_.items.push_back(name_edit_ + "_");
+    popup_.items.push_back("ENTER save   ESC cancel");
+    popup_.selection = 0;
   }
   state_.popup = popup_.kind != PopupKind::None;
   state_.popup_title = popup_.title;
@@ -537,6 +584,8 @@ void App::sync_ui() {
   json.reserve(1024);
   json += "{\"app\":\"fm1-card\",\"version\":\"";
   json += esp_app_get_description()->version;
+  json += "\",\"name\":\"";
+  json += json_escape(device_name_);
   json += "\",\"ip\":\"";
   {
     char ip[16]{};
@@ -693,7 +742,16 @@ void App::open_wifi_dialog() {
     wifi_scan_error_.clear();
     wifi_scan_running_ = true;
   }
-  queue_net({.command = NetCommand::WifiScan, .entry = {}, .destination = {}, .ssid = {}, .password = {}});
+  queue_net({.command = NetCommand::WifiScan, .entry = {}, .destination = {}, .ssid = {}, .password = {}, .name = {}});
+  dirty_ = true;
+}
+
+void App::open_name_dialog() {
+  popup_ = {};
+  popup_.kind = PopupKind::DeviceName;
+  popup_.title = "DEVICE NAME";
+  popup_.selection = 0;
+  name_edit_ = device_name_;
   dirty_ = true;
 }
 
@@ -725,7 +783,7 @@ void App::run_popup_action() {
     dirty_ = true;
   } else if (popup_.kind == PopupKind::HoardConfirm) {
     if (popup_.selection == 0) {
-      queue_net({.command = NetCommand::Hoard, .entry = {}, .destination = {}, .ssid = {}, .password = {}});
+      queue_net({.command = NetCommand::Hoard, .entry = {}, .destination = {}, .ssid = {}, .password = {}, .name = {}});
       set_message("HOARD starting...", false, 10'000);
     }
     popup_ = {};
@@ -803,7 +861,8 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
                  .entry = {},
                  .destination = {},
                  .ssid = wifi_ssid_,
-                 .password = wifi_password_});
+                 .password = wifi_password_,
+                 .name = {}});
       popup_ = {};
       wifi_password_.clear();
       dirty_ = true;
@@ -812,6 +871,40 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
     if (event.character >= 32 && event.character < 127 &&
         wifi_password_.size() < 63) {
       wifi_password_.push_back(event.character);
+      dirty_ = true;
+    }
+    return;
+  }
+  if (popup_.kind == PopupKind::DeviceName) {
+    if (event.code == 0x29) {
+      popup_ = {};
+      dirty_ = true;
+      return;
+    }
+    if (event.code == 0x2A) {
+      if (!name_edit_.empty()) name_edit_.pop_back();
+      dirty_ = true;
+      return;
+    }
+    if (event.code == 0x28) {
+      if (name_edit_.empty()) {
+        set_message("Name cannot be empty", true);
+        return;
+      }
+      name_edit_ = platform::normalize_device_name(name_edit_);
+      device_name_ = name_edit_;
+      queue_net({.command = NetCommand::SaveDeviceName,
+                 .entry = {},
+                 .destination = {},
+                 .ssid = {},
+                 .password = {},
+                 .name = name_edit_});
+      popup_ = {};
+      dirty_ = true;
+      return;
+    }
+    if (event.character >= 32 && event.character < 127 && name_edit_.size() < 32) {
+      name_edit_.push_back(event.character);
       dirty_ = true;
     }
     return;
@@ -954,7 +1047,8 @@ void App::handle_key(const platform::KeyEvent& event) {
                          .entry = state_.catalog[index],
                          .destination = *path,
                          .ssid = {},
-                         .password = {}});
+                         .password = {},
+                         .name = {}});
               set_message("Download queued");
             }
           }
@@ -1033,7 +1127,7 @@ void App::handle_key(const platform::KeyEvent& event) {
     case 'r':
     case 'R':
       if (state_.pane == ui::Pane::Library) {
-        queue_net({.command = NetCommand::Refresh, .entry = {}, .destination = {}, .ssid = {}, .password = {}});
+        queue_net({.command = NetCommand::Refresh, .entry = {}, .destination = {}, .ssid = {}, .password = {}, .name = {}});
         set_message(net_.wifi_connected() ? "Refreshing catalog..."
                                           : "Wi-Fi: connecting...", false, 30'000);
       }
@@ -1067,6 +1161,10 @@ void App::handle_key(const platform::KeyEvent& event) {
     case 'w':
     case 'W':
       if (state_.pane == ui::Pane::System) open_wifi_dialog();
+      break;
+    case 'n':
+    case 'N':
+      if (state_.pane == ui::Pane::System) open_name_dialog();
       break;
     case 'm':
     case 'M':

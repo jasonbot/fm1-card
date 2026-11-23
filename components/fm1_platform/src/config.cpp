@@ -11,6 +11,7 @@ namespace {
 constexpr const char* kConfigPath = "fm1-card/config.json";
 constexpr const char* kTemplate =
     "{\n"
+    "  \"device_name\": \"Cardputer\",\n"
     "  \"wifi\": { \"ssid\": \"\", \"password\": \"\" },\n"
     "  \"catalog\": \"https://www.jasonscheirer.com/firmware-zoo/firmwares.json\"\n"
     "}\n";
@@ -42,6 +43,20 @@ std::string value_of(const lwjson_token_t* token) {
 
 }  // namespace
 
+std::string normalize_device_name(std::string_view name) {
+  std::size_t begin = 0;
+  std::size_t end = name.size();
+  while (begin < end && (name[begin] == ' ' || name[begin] == '\t')) ++begin;
+  while (end > begin && (name[end - 1] == ' ' || name[end - 1] == '\t')) --end;
+  std::string out;
+  out.reserve(32);
+  for (std::size_t i = begin; i < end && out.size() < 32; ++i) {
+    const char c = name[i];
+    if (static_cast<unsigned char>(c) >= 32) out.push_back(c == ';' ? '-' : c);
+  }
+  return out.empty() ? std::string("Cardputer") : out;
+}
+
 Result<Config> load_config(Storage& storage) {
   Config config;
   auto text = storage.read_text(kConfigPath, 4096);
@@ -58,6 +73,7 @@ Result<Config> load_config(Storage& storage) {
   if (lwjson_parse(&json, text->c_str()) != lwjsonOK) {
     return fail("config.json is not valid JSON");
   }
+  config.device_name = normalize_device_name(value_of(lwjson_find(&json, "device_name")));
   const auto* wifi = lwjson_find(&json, "wifi");
   if (wifi != nullptr) {
     config.ssid = value_of(lwjson_find_ex(&json, wifi, "ssid"));
@@ -78,7 +94,9 @@ Result<void> save_config(Storage& storage, const Config& config) {
   (void)storage.ensure_dir("fm1-card");
   std::string text;
   text.reserve(512);
-  text += "{\n  \"wifi\": { \"ssid\": \"";
+  text += "{\n  \"device_name\": \"";
+  text += json_escape(normalize_device_name(config.device_name));
+  text += "\",\n  \"wifi\": { \"ssid\": \"";
   text += json_escape(config.ssid);
   text += "\", \"password\": \"";
   text += json_escape(config.password);

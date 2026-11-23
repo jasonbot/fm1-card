@@ -1,5 +1,9 @@
 # Network API
 
+UDP discovery on port `8135` replies `fm1-card;<ip>;80;<device-name>` to
+`hello`. The first three fields are the original format; the fourth is the
+editable device name.
+
 The device answers a small HTTP API while Wi-Fi
 is connected. There is no authentication; treat it as a trusted-LAN service.
 
@@ -25,7 +29,8 @@ Returns current state:
 ```json
 {
   "app": "fm1-card",
-  "version": "0.1.1",
+  "version": "0.1.2",
+  "name": "Cardputer",
   "sd": true,
   "wifi": "connected",
   "ssid": "scheirer-eero",

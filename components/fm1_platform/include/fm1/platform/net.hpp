@@ -60,6 +60,7 @@ class Net {
   Result<std::vector<WifiNetwork>> scan_networks();
   // Applies new credentials and reconnects without a reboot.
   Result<void> apply_wifi(const Config& config);
+  void set_device_name(std::string name);
   void note_connected();
   void note_disconnected();
   void stop();
@@ -91,6 +92,8 @@ class Net {
   Storage* storage_ = nullptr;
   std::string catalog_url_;
   std::string ssid_;
+  mutable std::mutex name_lock_;
+  std::string device_name_ = "Cardputer";
   mutable std::atomic<WifiState> state_{WifiState::Unconfigured};
   mutable std::mutex error_lock_;
   std::string wifi_error_;

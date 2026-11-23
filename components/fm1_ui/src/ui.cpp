@@ -230,8 +230,10 @@ void Ui::library(const UiState& state, int, int rows) {
 void Ui::system(const UiState& state) {
   canvas_.fill(0, 22, 240, 11, 3);
   canvas_.text(0, 2, "SYSTEM", 11);
-  canvas_.text(0, 3, "SD CARD", 2);
-  canvas_.textf(12, 3, state.sd_mounted ? 4 : 6, "%s",
+  canvas_.text(0, 3, "NAME", 2);
+  canvas_.text_clipped(12, 3, 27, state.device_name.empty() ? "Cardputer" : state.device_name, 1);
+  canvas_.text(0, 4, "SD CARD", 2);
+  canvas_.textf(12, 4, state.sd_mounted ? 4 : 6, "%s",
                 state.sd_mounted ? "mounted at /sdcard" : "NOT MOUNTED");
 
   const char* wifi = "unconfigured";
@@ -257,7 +259,7 @@ void Ui::system(const UiState& state) {
   canvas_.text(0, 9, "BATTERY", 2);
   if (state.battery >= 0) canvas_.textf(12, 9, 1, "%d%%", state.battery);
   else canvas_.text(12, 9, "unknown", 2);
-  canvas_.text(0, 10, "W opens Wi-Fi setup", 5);
+  canvas_.text(0, 10, "W wifi  N rename", 5);
 }
 
 void Ui::flash(const UiState& state) {
@@ -368,7 +370,7 @@ void Ui::footer(const UiState& state) {
       }
       break;
     case Pane::System:
-      hint1 = "W connect Wi-Fi";
+      hint1 = "W Wi-Fi  N rename";
       hint2 = "TAB pane";
       break;
   }

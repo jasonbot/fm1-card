@@ -44,6 +44,7 @@ struct UiState {
   platform::WifiState wifi_state = platform::WifiState::Unconfigured;
   std::string ip;
   std::string ssid;
+  std::string device_name;
   int rssi = -127;
   int battery = -1;
   std::string message;

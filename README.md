@@ -49,7 +49,7 @@ for the power finding that matters before you plug anything in.
 ## Network API
 
 While Wi-Fi is connected, the device answers UDP discovery on port `8135`
-(`hello` → `fm1-card;<ip>;80`). It exposes an HTTP API at that address:
+(`hello` → `fm1-card;<ip>;80;<device-name>`). It exposes an HTTP API at that address:
 
 - `GET /status` — device, USB-MIDI, clock and library state
 - `GET /firmwares` — installed package names; `?detail=1` adds size/SHA-256
@@ -136,6 +136,7 @@ ctest --test-dir build-tests --output-on-failure
 
 ```json
 {
+  "device_name": "Cardputer",
   "wifi": { "ssid": "your-ssid", "password": "your-password" },
   "catalog": "https://www.jasonscheirer.com/firmware-zoo/firmwares.json"
 }
@@ -178,8 +179,10 @@ The footer always shows the keys that work on the current screen.
   link, `Esc` closes. `Delete` clears all links.
 - **Clock**: `Space` starts/stops, `+`/`-` change BPM, `T` toggles all
   targets, `Enter` toggles one target.
-- **System**: shows SD, Wi-Fi, SSID, IP, signal and battery; `W` opens the
-  Wi-Fi scanner/password dialog (`R` rescans, `Esc` cancels, `Enter` selects).
+- **System**: shows device name, SD, Wi-Fi, SSID, IP, signal and battery.
+  `N` edits the device name (default `Cardputer`, 32 chars, edges trimmed);
+  `W` opens the Wi-Fi scanner/password dialog (`R` rescans, `Esc` cancels,
+  `Enter` selects).
 - **Library**: `R` refreshes the catalog (Wi-Fi), `/` edits the text filter,
   `T` cycles the device filter (ALL / FM-1 / SMK-37), `C` cycles the chip
   filter (ALL / new / old) on FM-1 and the variant filter (ALL / Pro /

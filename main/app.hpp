@@ -31,16 +31,17 @@ class App {
   void net_loop();
 
  private:
-  enum class NetCommand { Start, Refresh, Download, Hoard, WifiScan, WifiConnect };
+  enum class NetCommand { Start, Refresh, Download, Hoard, WifiScan, WifiConnect, SaveDeviceName };
   struct NetJob {
     NetCommand command = NetCommand::Start;
     catalog::Entry entry;
     std::string destination;
     std::string ssid;
     std::string password;
+    std::string name;
   };
 
-  enum class PopupKind { None, Packages, Sinks, MscActions, HoardConfirm, WifiNetworks, WifiPassword };
+  enum class PopupKind { None, Packages, Sinks, MscActions, HoardConfirm, WifiNetworks, WifiPassword, DeviceName };
   struct Popup {
     PopupKind kind = PopupKind::None;
     std::string title;
@@ -53,6 +54,7 @@ class App {
   void handle_key(const platform::KeyEvent& event);
   void handle_popup_key(const platform::KeyEvent& event);
   void open_wifi_dialog();
+  void open_name_dialog();
   void sync_ui();
   void refresh_library(bool keep_shift = false);
   void set_message(std::string message, bool error = false, uint32_t ttl_ms = 6000);
@@ -115,6 +117,8 @@ class App {
   std::string wifi_scan_error_;
   std::string wifi_ssid_;
   std::string wifi_password_;
+  std::string device_name_ = "Cardputer";
+  std::string name_edit_;
 
 };
 
