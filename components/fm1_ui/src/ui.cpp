@@ -53,7 +53,7 @@ void Ui::tabs(const UiState& state) {
   static constexpr const char* kNames[4] = {"DEV", "ROUTE", "CLOCK", "LIB"};
   constexpr int kWidth = 58;
   for (int i = 0; i < 4; ++i) {
-    button(i * 61, 8, kWidth, 8, kNames[i], static_cast<int>(state.pane) == i);
+    button(i * 61, 10, kWidth, 10, kNames[i], static_cast<int>(state.pane) == i);
   }
 }
 
@@ -88,7 +88,7 @@ void Ui::devices(const UiState& state, int, int rows) {
       canvas_.text(30, y, "WL82", 5);
     }
   }
-  scrollbar(first, rows, total, 24, 80);
+  scrollbar(first, rows, total, 30, 70);
 }
 
 void Ui::routes(const UiState& state, int, int rows) {
@@ -120,69 +120,68 @@ void Ui::routes(const UiState& state, int, int rows) {
     }
     canvas_.text(20, y, at == 0 ? "none" : links, selected ? 11 : (at == 0 ? 2 : 4));
   }
-  scrollbar(first, rows, total, 24, 80);
+  scrollbar(first, rows, total, 30, 70);
 }
 
 void Ui::clock(const UiState& state, int, int) {
-  canvas_.text(0, 2, "MIDI CLOCK", 2);
-  canvas_.fill(0, 24, 160, 8, 8);
-  canvas_.hline(0, 24, 160, 11);
-  canvas_.vline(0, 24, 8, 11);
-  canvas_.hline(0, 31, 160, 9);
-  canvas_.vline(159, 24, 8, 9);
-  canvas_.textf(1, 3, 1, "%3u BPM", state.bpm);
-  canvas_.text(13, 3, state.clock_running ? "RUN" : "STOP", state.clock_running ? 4 : 6);
+  canvas_.fill(0, 20, 160, 10, 8);
+  canvas_.hline(0, 20, 160, 11);
+  canvas_.vline(0, 20, 10, 11);
+  canvas_.hline(0, 29, 160, 9);
+  canvas_.vline(159, 20, 10, 9);
+  canvas_.textf(1, 2, 1, "%3u BPM", state.bpm);
+  canvas_.text(13, 2, state.clock_running ? "RUN" : "STOP", state.clock_running ? 4 : 6);
 
   const int bar = static_cast<int>((state.beat_phase % 24) * 30 / 24);
   canvas_.fill(0, 34, 180, 3, 8);
   canvas_.fill(0, 34, bar * 6, 3, 4);
 
-  canvas_.text(0, 5, "Targets:", 2);
-  canvas_.text_clipped(9, 5, 30, state.clock_targets.empty() ? "none" : state.clock_targets, 1);
+  canvas_.text(0, 4, "Targets:", 2);
+  canvas_.text_clipped(9, 4, 30, state.clock_targets.empty() ? "none" : state.clock_targets, 1);
 
   const int total = static_cast<int>(state.midi.size());
-  constexpr int kListRows = 6;
+  constexpr int kListRows = 5;
   const int first = std::max(0, state.selection - kListRows + 1);
   for (int row = 0; row < kListRows && first + row < total; ++row) {
     const int index = first + row;
     const auto& port = state.midi[static_cast<std::size_t>(index)];
     const bool selected = index == state.selection;
-    const int y = 7 + row;
-    if (selected) canvas_.fill(0, y * 8, 232, 8, 7);
+    const int y = 5 + row;
+    if (selected) canvas_.fill(0, y * 10, 232, 10, 7);
     std::string label = port.identity.empty() ? ("MIDI " + port.path) : port.identity;
     canvas_.textf(0, y, selected ? 11 : 1, "%c[%c] %u %s", selected ? '>' : ' ',
                   checkbox(state.clock_mask & (1u << index)), port.slot,
                   trim(label, 18).c_str());
   }
-  scrollbar(first, kListRows, total, 56, 48);
+  scrollbar(first, kListRows, total, 50, 50);
 }
 
 void Ui::library(const UiState& state, int, int rows) {
   const int local_count = static_cast<int>(state.local.size());
   const int total = local_count + static_cast<int>(state.catalog.size());
-  canvas_.textf(0, 2, 2, "LIB %zu  SD %s  %s %s", state.catalog_total,
-                state.sd_mounted ? "ok" : "NO", state.device_filter.c_str(),
-                state.chip_filter.c_str());
   if (state.editing_filter) {
-    canvas_.fill(0, 24, 240, 8, 1);
-    canvas_.textf(0, 3, 0, "/%s_", state.filter.c_str());
-  } else if (!state.filter.empty()) {
-    canvas_.text_clipped(0, 3, 40, "/" + state.filter, 5);
+    canvas_.fill(0, 20, 240, 10, 1);
+    canvas_.textf(0, 2, 0, "/%s_", state.filter.c_str());
   } else {
-    canvas_.text(0, 3, "firmwares", 2);
+    canvas_.textf(0, 2, 2, "LIB %zu SD %s %s %s", state.catalog_total,
+                  state.sd_mounted ? "ok" : "NO", state.device_filter.c_str(),
+                  state.chip_filter.c_str());
+    if (!state.filter.empty()) {
+      canvas_.text_clipped(30, 2, 10, "/" + state.filter, 5);
+    }
   }
   if (total == 0) {
-    canvas_.text(1, 5, "No packages or catalog.", 1);
-    canvas_.text(1, 6, "Put .fwsc files on the card", 2);
-    canvas_.text(1, 7, "or refresh with R.", 2);
+    canvas_.text(1, 4, "No packages or catalog.", 1);
+    canvas_.text(1, 5, "Put .fwsc files on the card", 2);
+    canvas_.text(1, 6, "or refresh with R.", 2);
     return;
   }
   const int first = std::max(0, state.selection - rows + 1);
   for (int row = 0; row < rows && first + row < total; ++row) {
     const int index = first + row;
     const bool selected = index == state.selection;
-    const int y = 4 + row;
-    if (selected) canvas_.fill(0, y * 8, 232, 8, 7);
+    const int y = 3 + row;
+    if (selected) canvas_.fill(0, y * 10, 232, 10, 7);
     if (index < local_count) {
       const auto& local = state.local[static_cast<std::size_t>(index)];
       canvas_.text(0, y, selected ? ">" : "*", selected ? 11 : 4);
@@ -198,7 +197,7 @@ void Ui::library(const UiState& state, int, int rows) {
                    selected ? 11 : 5);
     }
   }
-  scrollbar(first, rows, total, 32, rows * 8);
+  scrollbar(first, rows, total, 30, rows * 10);
 
   const auto* entry = [&]() -> const catalog::Entry* {
     if (state.selection < local_count) return nullptr;
@@ -206,31 +205,31 @@ void Ui::library(const UiState& state, int, int rows) {
     return index < state.catalog.size() ? &state.catalog[index] : nullptr;
   }();
   if (entry != nullptr) {
-    canvas_.text_clipped(0, 12, 40, entry->name + "  " + entry->version, 1);
-    canvas_.text_clipped(0, 13, 40, entry->author + "  " + entry->tags, 2);
+    canvas_.text_clipped(0, 9, 40, entry->name + "  " + entry->version, 1);
+    canvas_.text_clipped(0, 10, 40, entry->author + "  " + entry->tags, 2);
   } else if (state.selection < local_count) {
     const auto& local = state.local[static_cast<std::size_t>(state.selection)];
-    canvas_.text_clipped(0, 12, 40,
+    canvas_.text_clipped(0, 9, 40,
                          local.name + "  " + local.product + "  " +
                              std::to_string(local.size / 1024) + "K",
                          1);
-    canvas_.text_clipped(0, 13, 40, local.path, 2);
+    canvas_.text_clipped(0, 10, 40, local.path, 2);
   }
 }
 
 void Ui::flash(const UiState& state) {
   if (!state.flash.running && !state.flash.error) return;
-  canvas_.fill(0, 16, 240, 96, 0);
-  canvas_.frame(0, 16, 240, 96, state.flash.error ? 6 : 3);
-  canvas_.fill(1, 17, 238, 8, state.flash.error ? 6 : 3);
+  canvas_.fill(0, 20, 240, 90, 0);
+  canvas_.frame(0, 20, 240, 90, state.flash.error ? 6 : 3);
+  canvas_.fill(1, 21, 238, 10, state.flash.error ? 6 : 3);
   canvas_.text(1, 2, state.flash.error ? "FLASH FAILED" : "FLASH", 11);
-  canvas_.text_clipped(1, 4, 38, state.flash.step, 1);
+  canvas_.text_clipped(1, 3, 38, state.flash.step, 1);
   const int percent = std::clamp(state.flash.percent, 0, 100);
   canvas_.fill(6, 42, 228, 5, 8);
   canvas_.fill(6, 42, 228 * percent / 100, 5, 4);
-  canvas_.textf(36, 5, 1, "%3d%%", percent);
-  int row = 7;
-  const int lines = std::min<int>(5, static_cast<int>(state.flash.log.size()));
+  canvas_.textf(36, 4, 1, "%3d%%", percent);
+  int row = 6;
+  const int lines = std::min<int>(4, static_cast<int>(state.flash.log.size()));
   for (int i = 0; i < lines; ++i) {
     canvas_.text_clipped(1, row++, 38,
                          state.flash.log[state.flash.log.size() - lines + i], 2);
@@ -239,21 +238,21 @@ void Ui::flash(const UiState& state) {
 
 void Ui::popup(const UiState& state) {
   if (!state.popup) return;
-  canvas_.fill(0, 16, 240, 96, 0);
-  canvas_.frame(0, 16, 240, 96, 3);
-  canvas_.fill(1, 17, 238, 8, 3);
+  canvas_.fill(0, 20, 240, 90, 0);
+  canvas_.frame(0, 20, 240, 90, 3);
+  canvas_.fill(1, 21, 238, 10, 3);
   canvas_.text_clipped(1, 2, 38, state.popup_title, 11);
-  const int first = std::max(0, state.popup_selection - 7);
-  for (int row = 0; row < 8 && first + row < static_cast<int>(state.popup_items.size());
+  const int first = std::max(0, state.popup_selection - 6);
+  for (int row = 0; row < 7 && first + row < static_cast<int>(state.popup_items.size());
        ++row) {
     const int index = first + row;
     const bool selected = index == state.popup_selection;
-    const int y = 4 + row;
-    if (selected) canvas_.fill(0, y * 8, 232, 8, 7);
+    const int y = 3 + row;
+    if (selected) canvas_.fill(0, y * 10, 232, 10, 7);
     canvas_.text_clipped(1, y, 38, state.popup_items[static_cast<std::size_t>(index)],
                          selected ? 11 : 1);
   }
-  scrollbar(first, 8, static_cast<int>(state.popup_items.size()), 32, 64);
+  scrollbar(first, 7, static_cast<int>(state.popup_items.size()), 30, 70);
 }
 
 void Ui::scrollbar(int first, int visible, int total, int y, int height) {
@@ -275,11 +274,11 @@ void Ui::scrollbar(int first, int visible, int total, int y, int height) {
 
 void Ui::footer(const UiState& state) {
   if (!state.message.empty()) {
-    canvas_.fill(0, 104, 240, 8, state.message_error ? 6 : 5);
-    canvas_.text_clipped(0, 13, 40, state.message, state.message_error ? 11 : 1);
+    canvas_.fill(0, 100, 240, 10, state.message_error ? 6 : 5);
+    canvas_.text_clipped(0, 10, 40, state.message, state.message_error ? 11 : 1);
   }
-  canvas_.fill(0, 112, 240, 16, 8);
-  canvas_.hline(0, 112, 240, 11);
+  canvas_.fill(0, 110, 240, 20, 8);
+  canvas_.hline(0, 110, 240, 11);
   canvas_.hline(0, 119, 240, 9);
   const char* hint1 = "";
   const char* hint2 = "";
@@ -305,18 +304,18 @@ void Ui::footer(const UiState& state) {
       }
       break;
   }
-  canvas_.text_clipped(0, 14, 40, hint1, 1);
-  canvas_.text_clipped(0, 15, 40, hint2, 2);
+  canvas_.text_clipped(0, 11, 40, hint1, 1);
+  canvas_.text_clipped(0, 12, 40, hint2, 2);
 }
 
 void Ui::draw(const UiState& state) {
   header(state);
   tabs(state);
   switch (state.pane) {
-    case Pane::Devices: devices(state, 3, 10); break;
-    case Pane::Routes: routes(state, 3, 10); break;
+    case Pane::Devices: devices(state, 3, 7); break;
+    case Pane::Routes: routes(state, 3, 7); break;
     case Pane::Clock: clock(state, 0, 0); break;
-    case Pane::Library: library(state, 4, 8); break;
+    case Pane::Library: library(state, 3, 6); break;
   }
   flash(state);
   popup(state);

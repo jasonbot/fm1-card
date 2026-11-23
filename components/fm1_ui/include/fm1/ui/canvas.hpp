@@ -18,7 +18,10 @@ namespace fm1::ui {
 struct Glyph {
   uint8_t advance = 0;
   uint8_t width = 0;
-  std::array<uint8_t, 8> rows{};
+  uint8_t height = 0;
+  int8_t top = 0;
+  int8_t xoff = 0;
+  std::array<uint8_t, 11> rows{};
 };
 
 extern const Glyph kGlyphs[95];
@@ -28,9 +31,9 @@ class Canvas {
   static constexpr int kWidth = 240;
   static constexpr int kHeight = 135;
   static constexpr int kCellW = 6;
-  static constexpr int kCellH = 8;
+  static constexpr int kCellH = 10;
   static constexpr int kCols = kWidth / kCellW;   // 40
-  static constexpr int kRows = kHeight / kCellH;  // 16
+  static constexpr int kRows = kHeight / kCellH;  // 13
 
   Canvas();
   void clear(uint8_t color = 0);

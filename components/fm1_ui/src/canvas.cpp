@@ -79,10 +79,12 @@ void Canvas::char_at(int col, int row, char c, uint8_t color) {
   const Glyph& glyph = kGlyphs[(ch < 32 || ch > 126 ? '?' : ch) - 32];
   const int x0 = col * kCellW;
   const int y0 = row * kCellH;
-  for (int gy = 0; gy < 8; ++gy) {
+  for (int gy = 0; gy < glyph.height; ++gy) {
     const uint8_t bits = glyph.rows[gy];
     for (int gx = 0; gx < glyph.width; ++gx) {
-      if ((bits & (1u << gx)) != 0) pixel(x0 + gx, y0 + gy, color);
+      if ((bits & (1u << (7 - gx))) != 0) {
+        pixel(x0 + glyph.xoff + gx, y0 + glyph.top + gy, color);
+      }
     }
   }
 }
@@ -92,10 +94,12 @@ void Canvas::draw_text(int x, int y, std::string_view text, uint8_t color, int m
     if (x >= max_x || x >= kWidth) break;
     const auto ch = static_cast<unsigned char>(c);
     const Glyph& glyph = kGlyphs[(ch < 32 || ch > 126 ? '?' : ch) - 32];
-    for (int gy = 0; gy < 8; ++gy) {
+    for (int gy = 0; gy < glyph.height; ++gy) {
       const uint8_t bits = glyph.rows[gy];
       for (int gx = 0; gx < glyph.width; ++gx) {
-        if ((bits & (1u << gx)) != 0) pixel(x + gx, y + gy, color);
+        if ((bits & (1u << (7 - gx))) != 0) {
+          pixel(x + glyph.xoff + gx, y + glyph.top + gy, color);
+        }
       }
     }
     x += glyph.advance;
