@@ -184,7 +184,8 @@ void Ui::library(const UiState& state, int, int rows) {
     canvas_.text(1, 6, "or refresh with R.", 2);
     return;
   }
-  const int first = std::max(0, state.selection - rows + 1);
+  const int first = std::clamp(state.selection - rows / 2, 0,
+                               std::max(0, total - rows));
   for (int row = 0; row < rows && first + row < total; ++row) {
     const int index = first + row;
     const bool selected = index == state.selection;
@@ -206,6 +207,7 @@ void Ui::library(const UiState& state, int, int rows) {
     }
   }
   scrollbar(first, rows, total, 33, rows * 11);
+  canvas_.hline(0, 88, 240, 9);
 
   const auto* entry = [&]() -> const catalog::Entry* {
     if (state.selection < local_count) return nullptr;
