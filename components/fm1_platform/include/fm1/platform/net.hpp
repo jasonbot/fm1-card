@@ -39,6 +39,9 @@ class Net {
   Result<void> refresh_catalog(const ProgressFn& progress);
   Result<void> download(const catalog::Entry& entry, const std::string& destination,
                         const ProgressFn& progress);
+  // True when destination and its .meta sidecar match this entry and the
+  // local file still hashes to the recorded digest.
+  Result<bool> has_current(const catalog::Entry& entry, const std::string& destination);
 
  private:
   Result<void> fetch(const std::string& url, const ProgressFn& progress,

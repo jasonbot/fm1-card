@@ -281,6 +281,15 @@ void App::net_loop() {
               hoard_.current = entry.name;
               hoard_.percent = 0;
             }
+            auto current = net_.has_current(entry, *destination);
+            if (current && *current) {
+              ++done;
+              {
+                std::lock_guard lock(hoard_lock_);
+                hoard_.done = done;
+              }
+              return !hoard_cancel_.load();
+            }
             bool downloaded = false;
             std::string error;
             for (int attempt = 0; attempt < 2 && !downloaded; ++attempt) {

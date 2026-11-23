@@ -41,6 +41,30 @@ void wifi_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
   }
 }
 
+std::string hex(const uint8_t* bytes, std::size_t length);
+
+Result<std::string> sha256_file(const std::string& path, std::size_t* size_out) {
+  std::FILE* file = std::fopen(path.c_str(), "rb");
+  if (file == nullptr) return fail("cannot open " + path);
+  psa_crypto_init();
+  psa_hash_operation_t sha = PSA_HASH_OPERATION_INIT;
+  psa_hash_setup(&sha, PSA_ALG_SHA_256);
+  std::array<uint8_t, 4096> buffer{};
+  std::size_t total = 0;
+  for (;;) {
+    const auto got = std::fread(buffer.data(), 1, buffer.size(), file);
+    if (got == 0) break;
+    total += got;
+    psa_hash_update(&sha, buffer.data(), got);
+  }
+  std::fclose(file);
+  std::array<uint8_t, 32> digest{};
+  size_t digest_length = 0;
+  psa_hash_finish(&sha, digest.data(), digest.size(), &digest_length);
+  if (size_out != nullptr) *size_out = total;
+  return hex(digest.data(), digest_length);
+}
+
 std::string hex(const uint8_t* bytes, std::size_t length) {
   static constexpr char digits[] = "0123456789abcdef";
   std::string out;
@@ -343,9 +367,11 @@ Result<void> Net::download(const catalog::Entry& entry, const std::string& desti
   psa_crypto_init();
   psa_hash_operation_t sha = PSA_HASH_OPERATION_INIT;
   psa_hash_setup(&sha, PSA_ALG_SHA_256);
+  std::size_t written = 0;
   auto result = fetch(catalog::package_url(entry), progress, [&](std::span<const char> chunk) {
     if (std::fwrite(chunk.data(), 1, chunk.size(), file) != chunk.size()) return false;
     psa_hash_update(&sha, reinterpret_cast<const uint8_t*>(chunk.data()), chunk.size());
+    written += chunk.size();
     return true;
   });
   std::fflush(file);
@@ -373,7 +399,33 @@ Result<void> Net::download(const catalog::Entry& entry, const std::string& desti
     std::remove(temp_path.c_str());
     return fail("cannot save " + destination);
   }
+  const std::string meta_path = destination + ".meta";
+  if (std::FILE* meta = std::fopen(meta_path.c_str(), "wb")) {
+    std::fprintf(meta, "%s\n%s\n%zu\n", catalog::package_url(entry).c_str(),
+                 actual.c_str(), written);
+    std::fclose(meta);
+  }
   return {};
+}
+
+Result<bool> Net::has_current(const catalog::Entry& entry, const std::string& destination) {
+  std::FILE* meta = std::fopen((destination + ".meta").c_str(), "rb");
+  if (meta == nullptr) return false;
+  char url[512]{};
+  char digest[128]{};
+  unsigned long long size = 0;
+  const bool read_ok = std::fgets(url, sizeof(url), meta) != nullptr &&
+                       std::fgets(digest, sizeof(digest), meta) != nullptr &&
+                       std::fscanf(meta, "%llu", &size) == 1;
+  std::fclose(meta);
+  if (!read_ok) return false;
+  url[std::strcspn(url, "\r\n")] = '\0';
+  digest[std::strcspn(digest, "\r\n")] = '\0';
+  if (catalog::package_url(entry) != url) return false;
+  std::size_t local_size = 0;
+  auto local_digest = sha256_file(destination, &local_size);
+  if (!local_digest) return false;
+  return local_size == size && *local_digest == digest;
 }
 
 }  // namespace fm1::platform
