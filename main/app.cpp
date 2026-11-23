@@ -38,29 +38,42 @@ void App::run() {
     ESP_LOGE(kTag, "display: %s", r.error().message.c_str());
     return;
   }
+  boot_stage("display ok");
   if (auto r = keyboard_.init(); !r) {
     ESP_LOGE(kTag, "keyboard: %s", r.error().message.c_str());
+    boot_stage("keyboard failed: " + r.error().message, true);
   }
   if (auto r = battery_.init(); !r) {
     ESP_LOGE(kTag, "battery: %s", r.error().message.c_str());
   }
-  if (auto r = storage_.mount(); !r) {
-    ESP_LOGW(kTag, "storage: %s", r.error().message.c_str());
-    set_message("No SD card mounted: library/downloads unavailable", true, 15'000);
-  } else {
-    (void)storage_.ensure_dir("fm1-card");
-    (void)storage_.ensure_dir("fm1-card/firmwares");
-    (void)storage_.ensure_dir("fm1-card/backups");
-  }
 
+  // Bring USB host up before SD: a slow/failed card mount must not hide the
+  // host port from the rest of the system.
+  boot_stage("starting USB host...");
   if (auto r = usb_.start(); !r) {
     ESP_LOGE(kTag, "usb: %s", r.error().message.c_str());
+    boot_stage("USB host failed: " + r.error().message, true);
     set_message("USB host failed: " + r.error().message, true);
+  } else {
+    boot_stage("USB host active");
   }
   usb_.set_router(&router_);
   usb_.set_event_callback([this] { dirty_ = true; });
   if (auto r = flash_.start(usb_, storage_); !r) {
     ESP_LOGE(kTag, "flash worker: %s", r.error().message.c_str());
+  }
+
+  boot_stage("mounting SD card...");
+  if (auto r = storage_.mount(); !r) {
+    ESP_LOGW(kTag, "storage: %s", r.error().message.c_str());
+    boot_stage("SD mount failed: " + r.error().message, true);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    set_message("No SD card mounted: library/downloads unavailable", true, 15'000);
+  } else {
+    boot_stage("SD card mounted");
+    (void)storage_.ensure_dir("fm1-card");
+    (void)storage_.ensure_dir("fm1-card/firmwares");
+    (void)storage_.ensure_dir("fm1-card/backups");
   }
   queue_net({.command = NetCommand::Start, .entry = {}, .destination = {}});
 
@@ -80,6 +93,14 @@ void App::set_message(std::string message, bool error, uint32_t ttl_ms) {
     message_until_ = esp_timer_get_time() / 1000 + ttl_ms;
   }
   dirty_ = true;
+}
+
+void App::boot_stage(std::string_view stage, bool error) {
+  ui_.canvas().clear(0);
+  ui_.canvas().fill(0, 0, 240, 8, error ? 6 : 3);
+  ui_.canvas().text(0, 0, "FM1-CARD BOOT", 0);
+  ui_.canvas().text_clipped(0, 2, 40, stage, error ? 6 : 1);
+  ui_.canvas().present(&display_, blit_cb);
 }
 
 void App::queue_net(NetJob job) {
