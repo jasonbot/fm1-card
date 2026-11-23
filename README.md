@@ -44,6 +44,14 @@ claims the USB OTG port in host mode. Remaining bring-up: hub power, real
 MIDI-device enumeration/routing, and flashing an FM-1 — see `docs/hardware.md`
 for the power finding that matters before you plug anything in.
 
+## Releases
+
+Prebuilt images are published at
+[github.com/jasonbot/fm1-card/releases](https://github.com/jasonbot/fm1-card/releases).
+Each release has a merged full-flash image plus the app, bootloader, partition
+table and `SHA256SUMS`. Tags matching `v*` build and publish automatically via
+`.github/workflows/release.yml`.
+
 ## Hardware
 
 - M5Stack Cardputer-Adv (Stamp-S3A, ESP32-S3FN8, 8 MB flash).

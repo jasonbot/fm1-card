@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and package firmware
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          docker run --rm \
+            -v "$PWD:/project" -w /project \
+            -e TAG="$TAG" \
+            espressif/idf:release-v6.1 \
+            bash -lc '
+              set -e
+              git config --global --add safe.directory /project
+              idf.py set-target esp32s3
+              idf.py build
+              python -m esptool --chip esp32s3 merge-bin \
+                -o build/fm1-card-${TAG}-full.bin \
+                --flash-mode dio --flash-size 8MB --flash-freq 80m \
+                0x0 build/bootloader/bootloader.bin \
+                0x8000 build/partition_table/partition-table.bin \
+                0x10000 build/fm1-card.bin
+              cp build/fm1-card-${TAG}-full.bin dist/
+              cp build/fm1-card.bin dist/fm1-card-${TAG}-app.bin
+              cp build/bootloader/bootloader.bin dist/fm1-card-${TAG}-bootloader.bin
+              cp build/partition_table/partition-table.bin dist/fm1-card-${TAG}-partition-table.bin
+              cd dist
+              sha256sum fm1-card-${TAG}-* > SHA256SUMS
+            '
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: fm1-card ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          body: |
+            fm1-card ${{ github.ref_name }} for M5Stack Cardputer-Adv.
+
+            ## Flash the complete image
+
+            Put the Cardputer-Adv in download mode (power OFF, hold G0, connect USB-C,
+            release G0), then:
+
+            ```
+            esptool --chip esp32s3 -p /dev/ttyACM0 -b 460800 \
+              write-flash 0x0 fm1-card-${{ github.ref_name }}-full.bin
+            ```
+
+            Or flash the app only at `0x10000` if the bootloader and partition table
+            are already current:
+
+            ```
+            esptool --chip esp32s3 -p /dev/ttyACM0 -b 460800 \
+              write-flash 0x10000 fm1-card-${{ github.ref_name }}-app.bin
+            ```
+
+            `SHA256SUMS` covers every asset.
+
+            ## Contents
+
+            - `fm1-card-${{ github.ref_name }}-full.bin` — merged bootloader + partition table + app
+            - `fm1-card-${{ github.ref_name }}-app.bin` — application image at `0x10000`
+            - `fm1-card-${{ github.ref_name }}-bootloader.bin` — at `0x0`
+            - `fm1-card-${{ github.ref_name }}-partition-table.bin` — at `0x8000`
+            - `SHA256SUMS`
+          files: |
+            dist/fm1-card-${{ github.ref_name }}-full.bin
+            dist/fm1-card-${{ github.ref_name }}-app.bin
+            dist/fm1-card-${{ github.ref_name }}-bootloader.bin
+            dist/fm1-card-${{ github.ref_name }}-partition-table.bin
+            dist/SHA256SUMS
