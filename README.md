@@ -157,6 +157,7 @@ The footer always shows the keys that work on the current screen.
   `T` cycles the device filter (ALL / FM-1 / SMK-37), `C` cycles the chip
   filter (ALL / new / old) on FM-1 and the variant filter (ALL / Pro /
   Elite / MKE-P37) on SMK-37, `Enter` downloads the selected catalog entry.
+  Untagged SMK entries count as Pro; untagged chip entries count as old.
   Flash from the Devices pane: select a unit, press `F`, pick the package.
 - The Cardputer has no dedicated arrow keys: `Fn`+`;` / `Fn`+`.` scroll up
   and down, `Fn`+`,` / `Fn`+`/` move left and right. In the Library, `Ctrl`+

@@ -96,7 +96,11 @@ bool works_on_new_chip(const Entry& entry) {
 
 bool works_on_old_chip(const Entry& entry) {
   const auto tags = lower(entry.tags);
-  return tags.find("old chip") != std::string::npos ||
+  const bool tagged = tags.find("new chip") != std::string::npos ||
+                      tags.find("old chip") != std::string::npos ||
+                      tags.find("any chip") != std::string::npos;
+  // No chip tag means the stock/default (old) flash.
+  return !tagged || tags.find("old chip") != std::string::npos ||
          tags.find("any chip") != std::string::npos;
 }
 
@@ -104,8 +108,8 @@ SmkVariant smk_variant_of(const Entry& entry) {
   const auto tags = lower(entry.tags);
   if (tags.find("smk-37 elite") != std::string::npos) return SmkVariant::Elite;
   if (tags.find("mke-p37") != std::string::npos) return SmkVariant::Mke;
-  if (tags.find("smk-37 pro") != std::string::npos) return SmkVariant::Pro;
-  return SmkVariant::All;
+  // Untagged SMK entries are the default Pro build.
+  return SmkVariant::Pro;
 }
 
 SmkVariant smk_variant_from_product(std::string_view product) {
@@ -115,7 +119,8 @@ SmkVariant smk_variant_from_product(std::string_view product) {
     return SmkVariant::Mke;
   if (text.find("smk-37 pro") != std::string::npos || text.find("smk37 pro") != std::string::npos)
     return SmkVariant::Pro;
-  return SmkVariant::All;
+  // Bare SMK-37 products are the default Pro build.
+  return text.find("smk") != std::string::npos ? SmkVariant::Pro : SmkVariant::All;
 }
 
 bool matches_smk_variant(const Entry& entry, SmkVariant variant) {

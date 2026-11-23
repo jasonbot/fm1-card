@@ -397,6 +397,9 @@ void test_smk_variant() {
   CHECK_EQ(fm1::catalog::smk_variant_of(entry), fm1::catalog::SmkVariant::Pro);
   entry.tags = "other MKE-P37";
   CHECK_EQ(fm1::catalog::smk_variant_of(entry), fm1::catalog::SmkVariant::Mke);
+  entry.tags = "other";
+  CHECK_EQ(fm1::catalog::smk_variant_of(entry), fm1::catalog::SmkVariant::Pro);
+  CHECK(fm1::catalog::matches_smk_variant(entry, fm1::catalog::SmkVariant::Pro));
   CHECK_EQ(fm1::catalog::smk_variant_from_product("SMK-37 Elite_016"),
            fm1::catalog::SmkVariant::Elite);
   CHECK_EQ(fm1::catalog::smk_variant_from_product("SMK-37 Pro_016"),
