@@ -37,11 +37,12 @@ LVGL, no PSRAM.
 ## Status
 
 This repository is the initial implementation. The portable protocol/core
-layer is unit-tested on the host against the real 2026-11-22 firmware-zoo catalog
-(746 entries). The firmware target builds with ESP-IDF 6.1. Hardware bring-up
-(display offsets, hub power, flashing a real unit) is the next step — see
-`docs/hardware.md` for the power finding that matters before you plug
-anything in.
+layer is unit-tested on the host against the real 2026-11-22 firmware-zoo
+catalog (746 entries). The firmware builds with ESP-IDF 6.1, has been flashed
+to a Cardputer-Adv, boots with the display and keyboard, and successfully
+claims the USB OTG port in host mode. Remaining bring-up: hub power, real
+MIDI-device enumeration/routing, and flashing an FM-1 — see `docs/hardware.md`
+for the power finding that matters before you plug anything in.
 
 ## Hardware
 

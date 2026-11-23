@@ -71,7 +71,11 @@ Consequences for the design:
 
 ## USB host topology
 
-- TinyUSB host, full speed, with `CFG_TUH_HUB=1`.
+- TinyUSB host, full speed, with `CFG_TUH_HUB=1`. The ESP32-S3 OTG PHY
+  must be claimed explicitly with `usb_new_phy(USB_PHY_CTRL_OTG,
+  USB_OTG_MODE_HOST)` before `tuh_rhport_init()`. Once that succeeds, the
+  USB Serial/JTAG console disappears from the PC (the same pins/PHY are now
+  the host port); this is expected and was confirmed on hardware.
 - Up to 7 downstream devices with the default 8-address budget.
 - MIDI and MSC class drivers run simultaneously: a normal FM-1 is a MIDI
   device; after `DOWNLOAD MODE` it re-enumerates as the JieLi `WL82 /
