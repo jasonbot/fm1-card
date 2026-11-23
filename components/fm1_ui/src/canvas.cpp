@@ -75,28 +75,39 @@ void Canvas::vline(int x, int y, int height, uint8_t color) {
 
 void Canvas::char_at(int col, int row, char c, uint8_t color) {
   if (col < 0 || col >= kCols || row < 0 || row >= kRows) return;
+  const auto ch = static_cast<unsigned char>(c);
+  const Glyph& glyph = kGlyphs[(ch < 32 || ch > 126 ? '?' : ch) - 32];
   const int x0 = col * kCellW;
   const int y0 = row * kCellH;
-  const auto ch = static_cast<unsigned char>(c);
-  const uint8_t* glyph = &kFont5x7[(ch < 32 || ch > 126 ? '?' : ch) * 5];
-  for (int gx = 0; gx < 5; ++gx) {
-    const uint8_t bits = glyph[gx];
-    for (int gy = 0; gy < 7; ++gy) {
-      if ((bits & (1u << gy)) != 0) pixel(x0 + gx, y0 + gy, color);
+  for (int gy = 0; gy < 8; ++gy) {
+    const uint8_t bits = glyph.rows[gy];
+    for (int gx = 0; gx < glyph.width; ++gx) {
+      if ((bits & (1u << gx)) != 0) pixel(x0 + gx, y0 + gy, color);
     }
   }
 }
 
-void Canvas::text(int col, int row, std::string_view text, uint8_t color) {
-  for (std::size_t i = 0; i < text.size() && col + static_cast<int>(i) < kCols; ++i) {
-    char_at(col + static_cast<int>(i), row, text[i], color);
+void Canvas::draw_text(int x, int y, std::string_view text, uint8_t color, int max_x) {
+  for (char c : text) {
+    if (x >= max_x || x >= kWidth) break;
+    const auto ch = static_cast<unsigned char>(c);
+    const Glyph& glyph = kGlyphs[(ch < 32 || ch > 126 ? '?' : ch) - 32];
+    for (int gy = 0; gy < 8; ++gy) {
+      const uint8_t bits = glyph.rows[gy];
+      for (int gx = 0; gx < glyph.width; ++gx) {
+        if ((bits & (1u << gx)) != 0) pixel(x + gx, y + gy, color);
+      }
+    }
+    x += glyph.advance;
   }
 }
 
+void Canvas::text(int col, int row, std::string_view text, uint8_t color) {
+  draw_text(col * kCellW, row * kCellH, text, color, kWidth);
+}
+
 void Canvas::text_clipped(int col, int row, int width, std::string_view text, uint8_t color) {
-  for (int i = 0; i < width && i < static_cast<int>(text.size()); ++i) {
-    char_at(col + i, row, text[static_cast<std::size_t>(i)], color);
-  }
+  draw_text(col * kCellW, row * kCellH, text, color, (col + width) * kCellW);
 }
 
 void Canvas::textf(int col, int row, uint8_t color, const char* format, ...) {
@@ -114,8 +125,10 @@ void Canvas::present(void* context, BlitFn blit) {
     const std::size_t count = static_cast<std::size_t>(kWidth * height);
     for (int row = 0; row < height; ++row) {
       for (int col = 0; col < kWidth; ++col) {
+        const uint16_t color = palette_[at(col, y + row) & 0x0F];
+        // ST7789 over SPI expects the high byte first; ESP32 is little-endian.
         band_[static_cast<std::size_t>(row * kWidth + col)] =
-            palette_[at(col, y + row) & 0x0F];
+            static_cast<uint16_t>((color >> 8) | (color << 8));
       }
     }
     blit(context, 0, y, kWidth, height, std::span<const uint16_t>(band_.data(), count));

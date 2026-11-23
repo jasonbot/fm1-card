@@ -157,6 +157,9 @@ The footer always shows the keys that work on the current screen.
   `T` cycles the device filter (ALL / FM-1 / SMK-37), `C` cycles the chip
   filter (ALL / new / old), `Enter` downloads the selected catalog entry.
   Flash from the Devices pane: select a unit, press `F`, pick the package.
+- The Cardputer has no dedicated arrow keys: `Fn`+`;` / `Fn`+`.` scroll up
+  and down, `Fn`+`,` / `Fn`+`/` move left and right. `Fn`+Up/Down pages the
+  Library by 20 entries.
 - `F1`…`F4` jump to a pane; `Tab` cycles; `Fn`+`↑`/`↓` pages the library.
 
 ## Layout

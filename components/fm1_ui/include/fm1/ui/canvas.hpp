@@ -15,7 +15,13 @@ class Display;
 
 namespace fm1::ui {
 
-extern const uint8_t kFont5x7[256 * 5];
+struct Glyph {
+  uint8_t advance = 0;
+  uint8_t width = 0;
+  std::array<uint8_t, 8> rows{};
+};
+
+extern const Glyph kGlyphs[95];
 
 class Canvas {
  public:
@@ -34,6 +40,7 @@ class Canvas {
   void hline(int x, int y, int width, uint8_t color);
   void vline(int x, int y, int height, uint8_t color);
   void char_at(int col, int row, char c, uint8_t color);
+  void draw_text(int x, int y, std::string_view text, uint8_t color, int max_x);
   void text(int col, int row, std::string_view text, uint8_t color);
   void textf(int col, int row, uint8_t color, const char* format, ...);
   void text_clipped(int col, int row, int width, std::string_view text, uint8_t color);

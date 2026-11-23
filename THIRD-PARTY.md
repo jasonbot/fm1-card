@@ -4,7 +4,7 @@
 |---|---|---|
 | TinyUSB | MIT | `components/tinyusb/` |
 | lwjson 1.10 | MIT | `components/lwjson/` |
-| Adafruit 5x7 font | BSD | `components/fm1_ui/src/font.cpp` |
+| Silkscreen bitmap face | SIL OFL 1.1 | `components/fm1_ui/src/font.cpp`, `data/Silkscreen-OFL.txt` |
 | m-bootloader 2.4 (fm1/smk37 `uboot.boot`, `mflr-loader-a.bin`) | MIT | `data/`, see `data/m-bootloader-LICENSE.txt` |
 
 The FM-1/SMK-37 protocol and `.fwsc` layout were derived from the

@@ -285,23 +285,23 @@ void Ui::footer(const UiState& state) {
   const char* hint2 = "";
   switch (state.pane) {
     case Pane::Devices:
-      hint1 = "ENTER clock   F flash";
-      hint2 = "M download mode   TAB pane";
+      hint1 = "Fn ;/. select  ENTER clock  F flash";
+      hint2 = "M mode  TAB pane";
       break;
     case Pane::Routes:
-      hint1 = "ENTER targets   DEL clear";
-      hint2 = "TAB pane";
+      hint1 = "Fn ;/. select  ENTER targets";
+      hint2 = "DEL clear  TAB pane";
       break;
     case Pane::Clock:
-      hint1 = "SPACE run   +/- bpm   T all";
-      hint2 = "ENTER target   TAB pane";
+      hint1 = "SPACE run  +/- bpm  T all";
+      hint2 = "Fn ;/. select  ENTER target";
       break;
     case Pane::Library:
       if (state.editing_filter) {
         hint1 = "TYPE   ENTER apply   ESC cancel";
       } else {
-        hint1 = "T dev   C chip   / filter";
-        hint2 = "R reload   D download   F flash";
+        hint1 = "Fn ;/. scroll  T dev  C chip";
+        hint2 = "/ filter  R reload  D down  F flash";
       }
       break;
   }
