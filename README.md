@@ -127,6 +127,10 @@ It creates `fm1-card/{firmwares,backups,logs}`, writes `config.json` and a
 short on-card README, and copies any `*.fwsc` from `--import`. Existing
 config and packages are kept unless `--force` is given.
 
+`config.json` is read once at boot. After editing it, power-cycle the
+Cardputer; a running app will not pick up the new SSID. The header shows
+`WIFI..` while connecting, `WIFI` when connected, and `WIFI!` on failure.
+
 For Wi-Fi, either edit `config.json` or rerun with credentials (prefer the
 environment/prompt over the command-line flag so the password is not in your
 shell history):

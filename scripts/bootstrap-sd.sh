@@ -118,7 +118,8 @@ if [[ ! -f "$readme" ]]; then
     cat >"$readme" <<'EOF'
 fm1-card SD layout
 
-  config.json         Wi-Fi SSID/password and catalog URL
+  config.json         Wi-Fi SSID/password and catalog URL; read at boot,
+                      so power-cycle the Cardputer after editing it
   firmwares/*.fwsc    firmware packages
   backups/*.bin       full-flash backups
   logs/               optional device logs

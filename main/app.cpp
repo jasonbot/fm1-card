@@ -46,7 +46,7 @@ void App::run() {
   }
   if (auto r = storage_.mount(); !r) {
     ESP_LOGW(kTag, "storage: %s", r.error().message.c_str());
-    set_message("No SD card: library and backups unavailable", true);
+    set_message("No SD card mounted: library/downloads unavailable", true, 15'000);
   } else {
     (void)storage_.ensure_dir("fm1-card");
     (void)storage_.ensure_dir("fm1-card/firmwares");
@@ -72,12 +72,12 @@ void App::run() {
                           8192, this, 2, nullptr, 0);
 }
 
-void App::set_message(std::string message, bool error) {
+void App::set_message(std::string message, bool error, uint32_t ttl_ms) {
   {
     std::lock_guard lock(message_lock_);
     message_ = std::move(message);
     message_is_error_ = error;
-    message_until_ = esp_timer_get_time() / 1000 + 6000;
+    message_until_ = esp_timer_get_time() / 1000 + ttl_ms;
   }
   dirty_ = true;
 }
@@ -150,19 +150,27 @@ void App::net_loop() {
           set_message(config.error().message, true);
           break;
         }
+        if (config->ssid.empty()) {
+          set_message("No Wi-Fi configured: edit fm1-card/config.json, then reboot", false,
+                      15'000);
+          (void)net_.start(storage_, *config);
+          break;
+        }
+        set_message("Wi-Fi: connecting to \"" + config->ssid + "\"...", false, 30'000);
         auto started = net_.start(storage_, *config);
         if (!started) {
-          set_message(started.error().message, true);
+          set_message("Wi-Fi: " + started.error().message, true, 15'000);
         } else if (net_.wifi_connected()) {
-          set_message("Wi-Fi ready: press R in LIB to refresh");
+          set_message("Wi-Fi connected: press R in LIB to refresh", false, 10'000);
           library_dirty_ = true;
         } else {
-          set_message("No Wi-Fi configured: SD-only");
+          set_message("Wi-Fi: still connecting...", false, 30'000);
         }
         break;
       }
       case NetCommand::Refresh: {
-        set_message("Fetching catalog...");
+        set_message(net_.wifi_connected() ? "Fetching catalog..."
+                                          : "Wi-Fi: connecting...", false, 30'000);
         auto refreshed = net_.refresh_catalog([&](const platform::NetProgress& progress) {
           if (progress.total > 0) {
             const int pct = static_cast<int>(progress.received * 100 / progress.total);
@@ -179,7 +187,8 @@ void App::net_loop() {
         break;
       }
       case NetCommand::Download: {
-        set_message("Downloading " + job.entry.name + "...");
+        set_message(net_.wifi_connected() ? ("Downloading " + job.entry.name + "...")
+                                          : "Wi-Fi: connecting...", false, 30'000);
         auto downloaded = net_.download(job.entry, job.destination,
                                         [&](const platform::NetProgress& progress) {
           if (progress.total > 0) {
@@ -226,6 +235,8 @@ void App::sync_ui() {
   state_.beat_phase = static_cast<uint32_t>(clock_.tick() % 24);
   state_.flash = flash_.status();
   state_.wifi = net_.wifi_connected();
+  state_.wifi_state = net_.wifi_state();
+  state_.sd_mounted = storage_.mounted();
   state_.battery = battery_.percent();
   {
     std::lock_guard lock(message_lock_);
@@ -551,7 +562,8 @@ void App::handle_key(const platform::KeyEvent& event) {
     case 'R':
       if (state_.pane == ui::Pane::Library) {
         queue_net({.command = NetCommand::Refresh, .entry = {}, .destination = {}});
-        set_message("Refreshing catalog...");
+        set_message(net_.wifi_connected() ? "Refreshing catalog..."
+                                          : "Wi-Fi: connecting...", false, 30'000);
       }
       break;
     case 'd':

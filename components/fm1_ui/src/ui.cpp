@@ -21,8 +21,15 @@ void Ui::header(const UiState& state) {
   canvas_.clear(0);
   canvas_.fill(0, 0, 240, 8, 3);
   canvas_.text(0, 0, "FM1-CARD", 0);
-  const char* wifi = state.wifi ? "WIFI" : "----";
-  canvas_.textf(20, 0, 0, "USB%u %s", static_cast<unsigned>(state.midi.size()), wifi);
+  const char* wifi = "----";
+  switch (state.wifi_state) {
+    case platform::WifiState::Connected: wifi = "WIFI"; break;
+    case platform::WifiState::Connecting: wifi = "WIFI.."; break;
+    case platform::WifiState::Failed: wifi = "WIFI!"; break;
+    case platform::WifiState::Unconfigured: wifi = "----"; break;
+  }
+  canvas_.textf(10, 0, 0, "USB%u", static_cast<unsigned>(state.midi.size()));
+  canvas_.textf(16, 0, 0, "%s", wifi);
   canvas_.textf(28, 0, 0, "%u BPM", state.bpm);
   if (state.battery >= 0) {
     canvas_.textf(35, 0, 0, "%3d%%", state.battery);
@@ -130,8 +137,8 @@ void Ui::clock(const UiState& state, int, int rows) {
 void Ui::library(const UiState& state, int, int rows) {
   const int local_count = static_cast<int>(state.local.size());
   const int total = local_count + static_cast<int>(state.catalog.size());
-  canvas_.textf(0, 2, 2, "LIB %d  SD %d", static_cast<int>(state.catalog.size()),
-                local_count);
+  canvas_.textf(0, 2, 2, "LIB %d  SD %s", static_cast<int>(state.catalog.size()),
+                state.sd_mounted ? "ok" : "NO");
   if (state.editing_filter) {
     canvas_.fill(0, 24, 240, 8, 1);
     canvas_.textf(0, 3, 0, "/%s_", state.filter.c_str());

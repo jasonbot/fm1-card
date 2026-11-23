@@ -33,9 +33,11 @@ void wifi_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
     esp_wifi_connect();
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     xEventGroupClearBits(group, kWifiConnected | kIp4);
+    net->note_disconnected();
     esp_wifi_connect();
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     xEventGroupSetBits(group, kWifiConnected | kIp4);
+    net->note_connected();
   }
 }
 
@@ -55,10 +57,14 @@ std::string hex(const uint8_t* bytes, std::size_t length) {
 Result<void> Net::start(Storage& storage, const Config& config) {
   storage_ = &storage;
   catalog_url_ = config.catalog_url;
-  if (config.ssid.empty()) {
+  ssid_ = config.ssid;
+  configured_.store(!ssid_.empty());
+  if (ssid_.empty()) {
+    state_.store(WifiState::Unconfigured);
     ESP_LOGW(kTag, "no Wi-Fi SSID configured; SD-only mode");
     return {};
   }
+  state_.store(WifiState::Connecting);
   event_group_ = xEventGroupCreate();
   if (event_group_ == nullptr) return fail("no Wi-Fi event group");
 
@@ -67,17 +73,29 @@ Result<void> Net::start(Storage& storage, const Config& config) {
     nvs_flash_erase();
     err = nvs_flash_init();
   }
-  if (err != ESP_OK) return fail("NVS init failed");
+  if (err != ESP_OK) {
+    state_.store(WifiState::Failed);
+    return fail("NVS init failed");
+  }
 
   err = esp_netif_init();
-  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return fail("netif init failed");
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    state_.store(WifiState::Failed);
+    return fail("netif init failed");
+  }
   err = esp_event_loop_create_default();
-  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return fail("event loop failed");
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    state_.store(WifiState::Failed);
+    return fail("event loop failed");
+  }
   esp_netif_create_default_wifi_sta();
 
   wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
   err = esp_wifi_init(&init);
-  if (err != ESP_OK) return fail("Wi-Fi init failed");
+  if (err != ESP_OK) {
+    state_.store(WifiState::Failed);
+    return fail("Wi-Fi init failed");
+  }
   esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event, this, nullptr);
   esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event, this, nullptr);
 
@@ -88,14 +106,31 @@ Result<void> Net::start(Storage& storage, const Config& config) {
                sizeof(wifi.sta.password) - 1);
   wifi.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
   err = esp_wifi_set_mode(WIFI_MODE_STA);
-  if (err != ESP_OK) return fail("Wi-Fi mode failed");
+  if (err != ESP_OK) {
+    state_.store(WifiState::Failed);
+    return fail("Wi-Fi mode failed");
+  }
   err = esp_wifi_set_config(WIFI_IF_STA, &wifi);
-  if (err != ESP_OK) return fail("Wi-Fi config failed");
+  if (err != ESP_OK) {
+    state_.store(WifiState::Failed);
+    return fail("Wi-Fi config failed");
+  }
   err = esp_wifi_start();
-  if (err != ESP_OK) return fail("Wi-Fi start failed");
+  if (err != ESP_OK) {
+    state_.store(WifiState::Failed);
+    return fail("Wi-Fi start failed");
+  }
   esp_wifi_set_ps(WIFI_PS_NONE);
   started_ = true;
-  return connect_wifi();
+  auto connected = connect_wifi();
+  if (!connected) {
+    state_.store(WifiState::Failed);
+    std::lock_guard lock(error_lock_);
+    wifi_error_ = connected.error().message;
+    return connected;
+  }
+  state_.store(WifiState::Connected);
+  return {};
 }
 
 Result<void> Net::connect_wifi() {
@@ -105,14 +140,59 @@ Result<void> Net::connect_wifi() {
   esp_wifi_connect();
   const auto bits = xEventGroupWaitBits(group, kIp4 | kFail, pdFALSE, pdTRUE,
                                         pdMS_TO_TICKS(20'000));
-  if ((bits & kIp4) == 0) return fail("Wi-Fi did not connect within 20 s");
+  if ((bits & kIp4) == 0) {
+    return fail("did not get an IP within 20 s (SSID \"" + ssid_ + "\")");
+  }
   ESP_LOGI(kTag, "Wi-Fi connected");
+  state_.store(WifiState::Connected);
   return {};
 }
 
 bool Net::wifi_connected() const {
   if (event_group_ == nullptr) return false;
   return (xEventGroupGetBits(static_cast<EventGroupHandle_t>(event_group_)) & kIp4) != 0;
+}
+
+std::string Net::wifi_error() const {
+  std::lock_guard lock(error_lock_);
+  return wifi_error_;
+}
+
+void Net::note_connected() {
+  state_.store(WifiState::Connected);
+  std::lock_guard lock(error_lock_);
+  wifi_error_.clear();
+}
+
+void Net::note_disconnected() {
+  if (configured_.load()) {
+    state_.store(WifiState::Connecting);
+  } else {
+    state_.store(WifiState::Unconfigured);
+  }
+}
+
+Result<void> Net::ensure_connected() {
+  if (!configured_.load()) {
+    return fail("Wi-Fi is not configured; edit fm1-card/config.json and reboot");
+  }
+  if (wifi_connected()) {
+    state_.store(WifiState::Connected);
+    return {};
+  }
+  if (!started_) {
+    return fail("Wi-Fi is not initialized");
+  }
+  state_.store(WifiState::Connecting);
+  auto connected = connect_wifi();
+  if (!connected) {
+    state_.store(WifiState::Failed);
+    std::lock_guard lock(error_lock_);
+    wifi_error_ = connected.error().message;
+    return fail(wifi_error_);
+  }
+  state_.store(WifiState::Connected);
+  return {};
 }
 
 void Net::stop() {
@@ -125,7 +205,10 @@ void Net::stop() {
 
 Result<void> Net::fetch(const std::string& url, const ProgressFn& progress,
                         const std::function<bool(std::span<const char>)>& sink) {
-  if (!wifi_connected()) return fail("Wi-Fi is not connected");
+  if (!wifi_connected()) {
+    return fail(wifi_configured() ? "Wi-Fi is still connecting; try again in a moment"
+                                 : "Wi-Fi is not configured");
+  }
   esp_http_client_config_t config{};
   config.url = url.c_str();
   config.crt_bundle_attach = esp_crt_bundle_attach;
@@ -181,6 +264,9 @@ Result<void> Net::fetch(const std::string& url, const ProgressFn& progress,
 
 Result<void> Net::refresh_catalog(const ProgressFn& progress) {
   if (storage_ == nullptr) return fail("no storage");
+  if (!storage_->mounted()) return fail("no SD card mounted; insert the card and reboot");
+  auto connected = ensure_connected();
+  if (!connected) return connected;
   (void)storage_->ensure_dir("fm1-card");
   const auto final_path = storage_->path("fm1-card/catalog.bin");
   const auto temp_path = final_path + ".tmp";
@@ -234,6 +320,10 @@ Result<void> Net::refresh_catalog(const ProgressFn& progress) {
 
 Result<void> Net::download(const catalog::Entry& entry, const std::string& destination,
                            const ProgressFn& progress) {
+  if (storage_ == nullptr) return fail("no storage");
+  if (!storage_->mounted()) return fail("no SD card mounted; insert the card and reboot");
+  auto connected = ensure_connected();
+  if (!connected) return connected;
   const auto temp_path = destination + ".tmp";
   std::FILE* file = std::fopen(temp_path.c_str(), "wb");
   if (file == nullptr) return fail("cannot create " + temp_path);

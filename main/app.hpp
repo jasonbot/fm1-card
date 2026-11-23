@@ -51,7 +51,7 @@ class App {
   void handle_popup_key(const platform::KeyEvent& event);
   void sync_ui();
   void refresh_library(bool keep_shift = false);
-  void set_message(std::string message, bool error = false);
+  void set_message(std::string message, bool error = false, uint32_t ttl_ms = 6000);
   void cycle_pane(int delta);
   void toggle_clock();
   void set_bpm(int delta);

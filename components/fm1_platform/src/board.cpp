@@ -408,15 +408,18 @@ Result<void> Storage::mount() {
 
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
   host.slot = SPI3_HOST;
-  sdspi_device_config_t slot{};
+  sdspi_device_config_t slot = SDSPI_DEVICE_CONFIG_DEFAULT();
   slot.host_id = SPI3_HOST;
   slot.gpio_cs = static_cast<gpio_num_t>(kPinSdCs);
+  slot.gpio_cd = GPIO_NUM_NC;
+  slot.gpio_wp = GPIO_NUM_NC;
+  slot.gpio_int = GPIO_NUM_NC;
   sdmmc_card_t* card = nullptr;
   err = check(esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot, &mount_config, &card),
               "sd mount");
   if (!err) return err;
   mounted_ = true;
-  ESP_LOGI(kTag, "SD mounted");
+  ESP_LOGI(kTag, "SD mounted at /sdcard");
   return {};
 }
 

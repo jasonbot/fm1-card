@@ -8,6 +8,7 @@
 #include "fm1/catalog.hpp"
 #include "fm1/platform/flash.hpp"
 #include "fm1/platform/library.hpp"
+#include "fm1/platform/net.hpp"
 #include "fm1/platform/usb.hpp"
 #include "fm1/ui/canvas.hpp"
 
@@ -34,6 +35,8 @@ struct UiState {
   bool clock_running = false;
   std::string clock_targets;
   bool wifi = false;
+  bool sd_mounted = false;
+  platform::WifiState wifi_state = platform::WifiState::Unconfigured;
   int battery = -1;
   std::string message;
   bool message_error = false;
