@@ -32,7 +32,9 @@ instead of asking a desktop to do it.
   live on the card. Wi-Fi is optional and can be configured on-device.
 
 The UI is a 240×135 text console driven by the 56-key keyboard. No touch, no
-LVGL, no PSRAM.
+LVGL, no PSRAM. Five tabs: **DEV** (USB devices), **ROUTE** (MIDI graph),
+**CLOCK**, **LIB** (catalog/SD packages) and **SYS** (SD, Wi-Fi, IP, signal,
+battery, on-device Wi-Fi setup).
 
 ## Status
 
