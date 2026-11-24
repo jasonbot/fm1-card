@@ -52,7 +52,7 @@ While Wi-Fi is connected, the device answers UDP discovery on port `8135`
 (`hello` → `fm1-card;<ip>;80;<device-name>`). It exposes an HTTP API at that address:
 
 - `GET /status` — device, USB-MIDI, clock and library state
-- `GET /firmwares` — installed package names; `?detail=1` adds size/SHA-256
+- `GET /firmwares` — installed package names; `?detail=1` adds size, SHA-256, title/author/version/tags
 - `GET /firmwares/info?name=...` — size, hash, product, device/variant for one file
 - `POST /firmwares?name=<file>.fwsc` — upload/overwrite a package; optional
   `title`, `author`, `version`, `description`, `tags` metadata is persisted

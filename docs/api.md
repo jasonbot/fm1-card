@@ -56,9 +56,10 @@ By default it returns names only, which is fast even with hundreds of files:
 ]
 ```
 
-Add `?detail=1` to include `size` and the sidecar `sha256` (null when no
-sidecar exists). This requires a stat/meta pass over every file and is much
-slower on SD.
+Add `?detail=1` to include `size`, the sidecar `sha256`, and persisted
+`title`, `author`, `version`, `description`, `tags`, and `product` fields.
+This requires a stat/meta pass over every file and is much slower on SD.
+`/firmwares/info` is better for one-file lookups.
 
 ## `POST /catalog`
 

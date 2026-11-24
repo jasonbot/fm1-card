@@ -453,20 +453,25 @@ esp_err_t Net::list_firmwares(httpd_req_t* request) {
       const std::string name = item->d_name;
       if (!ends_with(name, ".fwsc")) continue;
       const std::string path = base + "/" + name;
+      struct stat info{};
+      if (detail && stat(path.c_str(), &info) != 0) continue;
       std::string record;
       record.reserve(256);
       if (!first) record += ",";
       first = false;
       record += "{\"name\":\"" + json_escape(name) + "\",\"dir\":\"" + json_escape(dir) + "\"";
       if (detail) {
-        struct stat info{};
-        if (stat(path.c_str(), &info) != 0) continue;
         const std::string sha = read_meta_sha(path);
+        const auto meta = read_local_metadata(path);
         record += ",\"size\":" + std::to_string(info.st_size) + ",\"sha256\":";
         if (sha.empty())
           record += "null";
         else
           record += "\"" + sha + "\"";
+        record += ",\"title\":\"" + json_escape(meta.name) + "\",\"author\":\"" +
+                  json_escape(meta.author) + "\",\"version\":\"" + json_escape(meta.version) +
+                  "\",\"description\":\"" + json_escape(meta.what) + "\",\"tags\":\"" +
+                  json_escape(meta.tags) + "\",\"product\":\"" + json_escape(meta.product) + "\"";
       }
       record += "}";
       out += record;
