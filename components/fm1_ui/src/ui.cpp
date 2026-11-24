@@ -246,16 +246,26 @@ void Ui::header(const UiState& state) {
                   state.clock_running ? 4 : 15);
 
   std::string network = state.ssid;
-  if (network.empty()) {
-    switch (state.wifi_state) {
-      case platform::WifiState::Connected: network = "WIFI"; break;
-      case platform::WifiState::Connecting: network = "CONNECTING"; break;
-      case platform::WifiState::Failed: network = "WIFI ERROR"; break;
-      default: network = "NO WIFI"; break;
-    }
+  uint8_t network_color = 2;
+  switch (state.wifi_state) {
+    case platform::WifiState::Connected:
+      if (network.empty()) network = "WIFI";
+      network_color = 11;
+      break;
+    case platform::WifiState::Connecting:
+      if (network.empty()) network = "CONNECTING";
+      network_color = 2;  // dim grey while association is in progress
+      break;
+    case platform::WifiState::Failed:
+      if (network.empty()) network = "WIFI ERROR";
+      network_color = 6;
+      break;
+    default:
+      if (network.empty()) network = "NO WIFI";
+      network_color = 2;
+      break;
   }
-  draw_right_text(canvas_, 104, 202, 2, network,
-                  state.wifi_state == platform::WifiState::Connected ? 11 : 2);
+  draw_right_text(canvas_, 104, 202, 2, network, network_color);
 
   draw_wifi_icon(canvas_, 204, 2, kWifiIcon, 11, state.wifi,
                  state.rssi);
