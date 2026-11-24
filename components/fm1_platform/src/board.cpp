@@ -503,6 +503,10 @@ Result<std::string> Storage::read_text(std::string_view relative, std::size_t li
 
 Result<void> Storage::write_text(std::string_view relative, std::string_view text) const {
   if (!mounted_) return fail("no SD card");
+  const auto slash = relative.find_last_of('/');
+  if (slash != std::string_view::npos) {
+    if (auto made = ensure_dir(relative.substr(0, slash)); !made) return made;
+  }
   const auto file_path = path(relative);
   const auto tmp_path = file_path + ".tmp";
   std::FILE* file = std::fopen(tmp_path.c_str(), "wb");
