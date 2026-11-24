@@ -378,6 +378,10 @@ Result<void> FlashWorker::normal(const FlashJob& job) {
   if (port->identity.empty()) {
     return fail("the device did not answer the handshake: use Rescue or check the cable");
   }
+  // The update loader is already the second phase. Sending UPGRADE to it and
+  // serving both finishes writes the image directly; the normal stage-then-
+  // reboot flow would stop after the loader's first write request.
+  if (port->ota) return rescue(job);
 
   FileReader reader;
   auto opened = reader.open(job.package_path);
@@ -478,13 +482,17 @@ Result<void> FlashWorker::rescue(const FlashJob& job) {
   const std::string product = layout->product;
   const std::string model = model_of(product);
   const std::string path = port->path;
+  if (!port->identity.empty() && !identity::package_fits(port->identity, product)) {
+    return fail("the device is " + port->identity + ", the package is for " + product);
+  }
 
   ClaimGuard guard{*usb_, job.slot};
   usb_->claim(job.slot, true);
   usb_->mute(job.slot, true);
   usb_->send_sysex(job.slot, fm1::midi::kUpgrade);
   vTaskDelay(pdMS_TO_TICKS(2000));
-  publish("waiting for the device to pull the update", 0);
+  publish(port->ota ? "resuming the update loader" : "waiting for the device to pull the update",
+          0);
   const auto both = std::array<uint32_t, 2>{fm1::midi::kFinishStage, fm1::midi::kFinishWrite};
   auto served = update::serve(
       image, [&](std::chrono::milliseconds timeout) { return usb_->read_sysex(job.slot, timeout); },

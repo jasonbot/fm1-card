@@ -62,7 +62,13 @@ A unit that no longer answers the handshake still usually exposes a MIDI
 port. Send `UPGRADE` to it and serve with both finish addresses. If the port
 was in the running firmware, the flow is stage → reboot → write; if it was
 already in the loader, the same serve writes directly. No identity check is
-possible, so the package must be chosen carefully.
+possible on an unidentified port, so the package must be chosen carefully.
+
+A unit that identifies itself as `ota-<model>_<version>` is the update loader
+itself. The normal flash flow detects that and uses the same direct serve;
+`1 DEBRICK` in SYS also offers it using the official FM-1 package already in
+the local library. This is the path for a unit that got stuck after a failed
+or interrupted OTA update.
 
 ## Download mode and the open bootloader
 
@@ -119,10 +125,16 @@ would be overwritten outside the boot area. The backup is the escape hatch.
 
 ## Software DEBRICK
 
-If the FM-1 appears as an MSC device with vendor `WL82` and product
-`UBOOT1.00`, the SYS pane exposes `1 DEBRICK` when no MIDI device is present.
-The action requires the local library to contain the official `FM-1_015`
-package. The worker reads the whole 1 MiB flash twice, saves a verified
-backup, re-reads before writing, erases only `0x4000..0x92FFF`, writes and
-reads back each sector, then verifies the V15 firmware-region SHA-256.
-Chip key `0x980F` and flash IDs `0x856014`/`0xB36014` are mandatory.
+`1 DEBRICK` in SYS has two paths:
+
+- **MIDI update loader**: a unit answering `ota-<model>_<version>` is served
+  the official FM-1 image over the normal update protocol. It needs no ROM
+  disk. The action uses V15 when installed, otherwise V16.
+- **WL82 ROM disk**: a unit exposing an MSC device with vendor `WL82` and
+  product `UBOOT1.00` is restored from the official `FM-1_015` package. The
+  worker reads the whole 1 MiB flash twice, saves a verified backup, re-reads
+  before writing, erases only `0x4000..0x92FFF`, writes and reads back each
+  sector, then verifies the V15 firmware-region SHA-256. Chip key `0x980F`
+  and flash IDs `0x856014`/`0xB36014` are mandatory.
+
+The MIDI loader path takes priority when both kinds of target are attached.

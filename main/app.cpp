@@ -654,7 +654,9 @@ void App::sync_ui() {
     last_battery_check_us_ = battery_now;
   }
   state_.battery_charging = battery_charging_;
-  state_.debrick = state_.midi.empty();
+  const bool ota_loader = std::any_of(state_.midi.begin(), state_.midi.end(),
+                                      [](const auto& port) { return port.ota; });
+  state_.debrick = state_.midi.empty() || ota_loader || !state_.msc.empty();
   {
     std::lock_guard lock(message_lock_);
     state_.message = (esp_timer_get_time() / 1000 < message_until_) ? message_ : std::string{};
@@ -1009,32 +1011,50 @@ void App::open_flash_targets(int local_index) {
 }
 
 void App::start_debrick() {
-  if (state_.msc.empty()) {
-    set_message("Connect a WL82 UBOOT1.00 disk first", true, 15'000);
+  const platform::MidiPort* ota = nullptr;
+  for (const auto& port : state_.midi) {
+    if (port.ota) {
+      ota = &port;
+      break;
+    }
+  }
+  if (ota == nullptr && state_.msc.empty()) {
+    set_message("Connect the FM-1 update loader or a WL82 UBOOT1.00 disk first", true, 15'000);
     return;
   }
-  std::string path;
-  (void)library_.for_each([&](const catalog::Entry& entry) {
-    if (entry.product != "FM-1_015" && !(entry.name == "FM-1" && entry.version == "015")) {
+
+  auto find_package = [&](std::string_view product, std::string_view version) {
+    std::string path;
+    (void)library_.for_each([&](const catalog::Entry& entry) {
+      if (entry.product != product && !(entry.name == "FM-1" && entry.version == version)) {
+        return true;
+      }
+      auto candidate = library_.package_path(entry.id, entry.version);
+      struct stat info{};
+      if (candidate && stat(candidate->c_str(), &info) == 0 && info.st_size > 0) {
+        path = *candidate;
+        return false;
+      }
       return true;
-    }
-    auto candidate = library_.package_path(entry.id, entry.version);
-    struct stat info{};
-    if (candidate && stat(candidate->c_str(), &info) == 0 && info.st_size > 0) {
-      path = *candidate;
-      return false;
-    }
-    return true;
-  });
+    });
+    return path;
+  };
+
+  const bool midi = ota != nullptr;
+  std::string path = find_package("FM-1_015", "015");
+  if (midi && path.empty()) path = find_package("FM-1_016", "016");
   if (path.empty()) {
-    set_message("Install the official FM-1 V15 package first", true, 15'000);
+    set_message(midi ? "Install the official FM-1 V15 or V16 package first"
+                     : "Install the official FM-1 V15 package first",
+                true, 15'000);
     return;
   }
   popup_ = {};
   popup_.kind = PopupKind::DebrickConfirm;
-  popup_.title = "DEBRICK FM-1?";
-  popup_.items = {"WRITE OFFICIAL V15 (safe)", "CANCEL"};
-  popup_.context = state_.msc.front().slot;
+  popup_.title = midi ? "DEBRICK FM-1 VIA MIDI?" : "DEBRICK FM-1?";
+  popup_.items = {midi ? "WRITE OFFICIAL FM-1 (MIDI)" : "WRITE OFFICIAL V15 (safe)", "CANCEL"};
+  popup_.flash_kind = midi ? platform::FlashKind::Rescue : platform::FlashKind::Unbrick;
+  popup_.context = midi ? ota->slot : state_.msc.front().slot;
   popup_.paths = {path};
   popup_.selection = 0;
   dirty_ = true;
@@ -1150,8 +1170,7 @@ void App::run_popup_action() {
     popup_ = {};
   } else if (popup_.kind == PopupKind::DebrickConfirm) {
     if (popup_.selection == 0 && !popup_.paths.empty()) {
-      start_flash(platform::FlashKind::Unbrick, static_cast<uint8_t>(popup_.context),
-                  popup_.paths.front());
+      start_flash(popup_.flash_kind, static_cast<uint8_t>(popup_.context), popup_.paths.front());
     }
     popup_ = {};
   } else if (popup_.kind == PopupKind::MscActions) {

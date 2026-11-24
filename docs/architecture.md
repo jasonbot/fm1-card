@@ -153,7 +153,8 @@ package's logical image at 10 ms pacing, exactly like the hub installers.
 
 An unidentified MIDI port gets `UPGRADE` directly, then one `serve` with both
 finish addresses. If the port was already in the update loader, the write
-happens in that same pass.
+happens in that same pass. A known `ota-…` port takes this path too: the
+normal flow redirects it instead of trying to stage a loader it already is.
 
 ### Download mode + rescue bootloader
 

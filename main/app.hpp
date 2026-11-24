@@ -61,6 +61,7 @@ class App {
     std::vector<std::string> items;
     std::vector<int> values;
     std::vector<std::string> paths;
+    platform::FlashKind flash_kind = platform::FlashKind::Normal;
     int selection = 0;
     int context = 0;
   };
