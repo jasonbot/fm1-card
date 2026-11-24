@@ -549,8 +549,13 @@ void Ui::footer(const UiState& state) {
         }
         break;
       case Pane::System:
-        hint1 = "1 WI-FI  2 NAME";
-        hint2 = "TAB pane";
+        if (state.debrick) {
+          hint1 = "1 DEBRICK 2 WI-FI";
+          hint2 = "3 NAME  TAB";
+        } else {
+          hint1 = "1 WI-FI  2 NAME";
+          hint2 = "TAB pane";
+        }
         break;
     }
   canvas_.text_clipped(0, 10, 40, hint1, 1);

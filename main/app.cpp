@@ -504,9 +504,8 @@ void App::net_loop() {
           set_message("Device name active, not saved: no SD card", true, 15'000);
           break;
         }
-        auto updated = platform::update_config(storage_, [&](platform::Config& value) {
-          value.device_name = job.name;
-        });
+        auto updated = platform::update_config(
+            storage_, [&](platform::Config& value) { value.device_name = job.name; });
         if (!updated) {
           set_message("Device name: " + updated.error().message, true, 15'000);
         } else {
@@ -655,6 +654,7 @@ void App::sync_ui() {
     last_battery_check_us_ = battery_now;
   }
   state_.battery_charging = battery_charging_;
+  state_.debrick = state_.midi.empty();
   {
     std::lock_guard lock(message_lock_);
     state_.message = (esp_timer_get_time() / 1000 < message_until_) ? message_ : std::string{};
@@ -1008,6 +1008,38 @@ void App::open_flash_targets(int local_index) {
   dirty_ = true;
 }
 
+void App::start_debrick() {
+  if (state_.msc.empty()) {
+    set_message("Connect a WL82 UBOOT1.00 disk first", true, 15'000);
+    return;
+  }
+  std::string path;
+  (void)library_.for_each([&](const catalog::Entry& entry) {
+    if (entry.product != "FM-1_015" && !(entry.name == "FM-1" && entry.version == "015")) {
+      return true;
+    }
+    auto candidate = library_.package_path(entry.id, entry.version);
+    struct stat info{};
+    if (candidate && stat(candidate->c_str(), &info) == 0 && info.st_size > 0) {
+      path = *candidate;
+      return false;
+    }
+    return true;
+  });
+  if (path.empty()) {
+    set_message("Install the official FM-1 V15 package first", true, 15'000);
+    return;
+  }
+  popup_ = {};
+  popup_.kind = PopupKind::DebrickConfirm;
+  popup_.title = "DEBRICK FM-1?";
+  popup_.items = {"WRITE OFFICIAL V15 (safe)", "CANCEL"};
+  popup_.context = state_.msc.front().slot;
+  popup_.paths = {path};
+  popup_.selection = 0;
+  dirty_ = true;
+}
+
 void App::open_sinks(int source) {
   const auto& source_port = state_.midi[static_cast<std::size_t>(source)];
   popup_ = {};
@@ -1116,6 +1148,12 @@ void App::run_popup_action() {
         port.identity.empty() ? platform::FlashKind::Rescue : platform::FlashKind::Normal;
     start_flash(kind, port.slot, popup_.paths.front());
     popup_ = {};
+  } else if (popup_.kind == PopupKind::DebrickConfirm) {
+    if (popup_.selection == 0 && !popup_.paths.empty()) {
+      start_flash(platform::FlashKind::Unbrick, static_cast<uint8_t>(popup_.context),
+                  popup_.paths.front());
+    }
+    popup_ = {};
   } else if (popup_.kind == PopupKind::MscActions) {
     if (popup_.selection == 0) {
       start_flash(platform::FlashKind::Backup, static_cast<uint8_t>(popup_.context), {});
@@ -1223,10 +1261,18 @@ void App::run_menu_action(int index) {
       }
       break;
     case ui::Pane::System:
-      if (index == 0)
+      if (state_.debrick) {
+        if (index == 0)
+          start_debrick();
+        else if (index == 1)
+          open_wifi_dialog();
+        else if (index == 2)
+          open_name_dialog();
+      } else if (index == 0) {
         open_wifi_dialog();
-      else if (index == 1)
+      } else if (index == 1) {
         open_name_dialog();
+      }
       break;
   }
   dirty_ = true;

@@ -102,8 +102,7 @@ Result<void> write_config_template(Storage& storage) {
   return storage.write_text(kConfigPath, kTemplate);
 }
 
-Result<Config> update_config(Storage& storage,
-                             const std::function<void(Config&)>& mutate) {
+Result<Config> update_config(Storage& storage, const std::function<void(Config&)>& mutate) {
   static std::mutex lock;
   std::lock_guard guard(lock);
   auto loaded = load_config(storage);

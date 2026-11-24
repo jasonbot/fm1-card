@@ -49,6 +49,7 @@ struct UiState {
   int rssi = -127;
   int battery = -1;
   bool battery_charging = false;
+  bool debrick = false;
   std::string message;
   bool message_error = false;
   std::string detail;

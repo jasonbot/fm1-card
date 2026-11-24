@@ -208,8 +208,13 @@ number to run it. There are no mnemonic shortcuts.
   `Enter` downloads the selected catalog entry. Search is non-interactive:
   type while the search bar is focused, then press Enter to apply and return
   to the list (Esc clears it).
-- **System**: `1 WI-FI` opens the Wi-Fi scanner/password dialog, `2 NAME`
-  edits the device name (default `Cardputer`, 32 chars, edges trimmed).
+- **System**: with no MIDI devices attached, `1 DEBRICK` restores an FM-1
+  exposed as a `WL82 UBOOT1.00` disk from the official V15 package. It
+  requires a verified V15 package already in the local library; it reads and
+  saves the flash twice, refuses a mismatched chip/flash ID, writes only
+  `0x4000..0x92FFF`, and verifies readback. Without a MIDI device, `2 WI-FI`
+  opens the Wi-Fi dialog and `3 NAME` edits the device name. With devices
+  present, the actions remain `1 WI-FI` and `2 NAME`.
 - **Routes**: `1 ROUTE` opens the sink picker; `2 CLEAR` clears all links.
 - **Clock**: `1 RUN` starts/stops, `2 ALL` toggles all targets,
   `3 -BPM` / `4 +BPM` adjust tempo, `5 TARGET` toggles the selected device.

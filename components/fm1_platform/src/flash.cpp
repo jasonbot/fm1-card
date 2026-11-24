@@ -19,6 +19,7 @@
 #include "fm1/platform/file.hpp"
 #include "fm1/update.hpp"
 #include "fm1/wl82.hpp"
+#include "psa/crypto.h"
 
 extern "C" {
 extern const uint8_t _binary_mflr_loader_a_bin_start[];
@@ -137,6 +138,131 @@ bool is_ota(const MidiPort& port) {
   return port.identity.starts_with("ota-") || port.identity.starts_with("OTA-");
 }
 
+constexpr std::size_t kSector = 0x1000;
+constexpr std::uint32_t kAppStart = 0x4000;
+constexpr std::uint32_t kAppEnd = 0x93000;
+constexpr std::uint16_t kFm1ChipKey = 0x980F;
+constexpr std::uint32_t kFm1FlashId = 0x856014;
+constexpr std::uint32_t kFm1FlashId2 = 0xB36014;
+constexpr std::string_view kV15Hash =
+    "6edf3c37fb5bbbc33607c89375ee024d5477c17914d72221c8c68e58a8255686";
+
+std::string hex_digest(std::span<const std::uint8_t> bytes) {
+  static constexpr char digits[] = "0123456789abcdef";
+  std::string out;
+  out.reserve(bytes.size() * 2);
+  for (const auto byte : bytes) {
+    out.push_back(digits[byte >> 4]);
+    out.push_back(digits[byte & 0x0F]);
+  }
+  return out;
+}
+
+class Sha256 {
+ public:
+  Sha256() {
+    (void)psa_crypto_init();
+    (void)psa_hash_setup(&op_, PSA_ALG_SHA_256);
+  }
+  ~Sha256() {
+    psa_hash_abort(&op_);
+  }
+  Sha256(const Sha256&) = delete;
+  Sha256& operator=(const Sha256&) = delete;
+
+  void update(std::span<const std::uint8_t> bytes) {
+    (void)psa_hash_update(&op_, bytes.data(), bytes.size());
+  }
+  std::string finish() {
+    std::array<std::uint8_t, 32> digest{};
+    std::size_t length = 0;
+    (void)psa_hash_finish(&op_, digest.data(), digest.size(), &length);
+    return hex_digest(std::span<const std::uint8_t>(digest.data(), length));
+  }
+
+ private:
+  psa_hash_operation_t op_ = PSA_HASH_OPERATION_INIT;
+};
+
+std::vector<std::uint8_t> ufw_decrypt(std::span<const std::uint8_t> bytes) {
+  std::vector<std::uint8_t> out(bytes.begin(), bytes.end());
+  std::uint16_t key = 0xFFFF;
+  for (auto& byte : out) {
+    byte ^= static_cast<std::uint8_t>(key);
+    key = static_cast<std::uint16_t>((key & 0x8000) != 0 ? (key << 1) ^ 0x1021 : key << 1);
+  }
+  return out;
+}
+
+std::uint16_t le16(std::span<const std::uint8_t> bytes, std::size_t at) {
+  return static_cast<std::uint16_t>(bytes[at] | (bytes[at + 1] << 8));
+}
+
+std::uint32_t le32(std::span<const std::uint8_t> bytes, std::size_t at) {
+  return static_cast<std::uint32_t>(le16(bytes, at)) |
+         (static_cast<std::uint32_t>(le16(bytes, at + 2)) << 16);
+}
+
+struct UfwFlash {
+  std::uint64_t offset = 0;
+  std::uint64_t length = 0;
+};
+
+Result<UfwFlash> ufw_flash(package::LogicalImage& image) {
+  if (image.size() < 0x400) return fail("package is shorter than its UFW header");
+  std::vector<std::uint8_t> header(0x400);
+  if (auto read = image.read(0, header); !read) return std::unexpected(read.error());
+  const auto decoded = ufw_decrypt(std::span<const std::uint8_t>(header.data(), 0x40));
+  if (wl82::crc16(std::span<const std::uint8_t>(decoded).subspan(2)) != le16(decoded, 0)) {
+    return fail("UFW header CRC is invalid");
+  }
+  const auto entries = le16(decoded, 8);
+  if (entries == 0 || entries > 11) return fail("UFW header has an invalid entry count");
+  if (wl82::crc16(std::span<const std::uint8_t>(header).subspan(0x40, entries * 0x50)) !=
+      le16(decoded, 2)) {
+    return fail("UFW entry-list CRC is invalid");
+  }
+  UfwFlash flash;
+  bool found = false;
+  for (std::size_t i = 0; i < entries; ++i) {
+    const auto entry =
+        ufw_decrypt(std::span<const std::uint8_t>(header).subspan(0x40 + i * 0x50, 0x50));
+    if (le16(entry, 0) != 0) continue;
+    flash.offset = le32(entry, 8);
+    flash.length = le32(entry, 12);
+    found = true;
+    break;
+  }
+  if (!found) return fail("UFW package has no flash.bin entry");
+  if (flash.offset + flash.length > image.size()) {
+    return fail("UFW flash.bin runs past the package");
+  }
+  if (flash.length < kAppEnd) return fail("flash.bin does not contain a complete 0x93000 image");
+  return flash;
+}
+
+Result<std::string> region_hash(package::LogicalImage& image, const UfwFlash& flash) {
+  Sha256 hash;
+  std::vector<std::uint8_t> buffer(kSector);
+  for (std::uint32_t at = kAppStart; at < kAppEnd; at += kSector) {
+    if (auto read = image.read(flash.offset + at, buffer); !read) {
+      return std::unexpected(read.error());
+    }
+    hash.update(buffer);
+  }
+  return hash.finish();
+}
+
+Result<std::string> flash_hash(wl82::Loader& loader) {
+  Sha256 hash;
+  for (std::uint32_t at = 0; at < wl82::kFlashSize; at += kSector) {
+    auto data = loader.read(at, kSector);
+    if (!data) return std::unexpected(data.error());
+    hash.update(*data);
+  }
+  return hash.finish();
+}
+
 }  // namespace
 
 Result<void> FlashWorker::start(UsbHost& usb, Storage& storage) {
@@ -236,6 +362,9 @@ void FlashWorker::run(const FlashJob& job) {
       break;
     case FlashKind::Backup:
       result = backup(job);
+      break;
+    case FlashKind::Unbrick:
+      result = unbrick(job);
       break;
   }
   if (!result) {
@@ -406,6 +535,108 @@ Result<void> FlashWorker::rescue(const FlashJob& job) {
     return fail("the update loader stopped before the write finished");
   }
   publish("flashed", 100);
+  return {};
+}
+
+Result<void> FlashWorker::unbrick(const FlashJob& job) {
+  auto msc = usb_->msc_port(job.slot);
+  if (!msc) return fail("the WL82 UBOOT disk is not connected");
+  FileReader reader;
+  if (auto opened = reader.open(job.package_path); !opened) return opened;
+  auto layout = package::inspect(reader);
+  if (!layout) return std::unexpected(layout.error());
+  package::LogicalImage image(reader, *layout);
+  auto flash_part = ufw_flash(image);
+  if (!flash_part) return std::unexpected(flash_part.error());
+  auto expected = region_hash(image, *flash_part);
+  if (!expected) return std::unexpected(expected.error());
+  if (*expected != kV15Hash) {
+    return fail("DEBRICK requires the official FM-1 V15 firmware region");
+  }
+
+  MscTransport transport(*usb_, job.slot);
+  wl82::Loader loader(transport, [&](std::string_view text) { publish(std::string(text)); });
+  auto opened = loader.open(bytes(_binary_mflr_loader_a_bin_start, _binary_mflr_loader_a_bin_end));
+  if (!opened) return opened;
+  if (loader.chip_key() != kFm1ChipKey ||
+      (loader.flash_id() != kFm1FlashId && loader.flash_id() != kFm1FlashId2)) {
+    return fail("not an FM-1 flash (chip key or flash ID mismatch)");
+  }
+
+  (void)storage_->ensure_dir("fm1-card/backups");
+  const std::string backup = storage_->path("fm1-card/backups/unbrick-" + timestamp() + ".bin");
+  std::FILE* dump = std::fopen(backup.c_str(), "wb");
+  if (dump == nullptr) return fail("cannot create " + backup);
+
+  publish("backing up the flash (1/2)", 0);
+  Sha256 first;
+  for (std::uint32_t at = 0; at < wl82::kFlashSize; at += kSector) {
+    auto data = loader.read(at, kSector);
+    if (!data) {
+      std::fclose(dump);
+      std::remove(backup.c_str());
+      return std::unexpected(data.error());
+    }
+    if (std::fwrite(data->data(), 1, data->size(), dump) != data->size()) {
+      std::fclose(dump);
+      std::remove(backup.c_str());
+      return fail("short backup write");
+    }
+    first.update(*data);
+  }
+  std::fclose(dump);
+  const auto first_hash = first.finish();
+
+  publish("backing up the flash (2/2)", 0);
+  Sha256 second;
+  for (std::uint32_t at = 0; at < wl82::kFlashSize; at += kSector) {
+    auto data = loader.read(at, kSector);
+    if (!data) return std::unexpected(data.error());
+    second.update(*data);
+  }
+  if (second.finish() != first_hash) {
+    return fail("the two flash reads differ; nothing was written (backup: " + backup + ")");
+  }
+  publish("backup verified: " + backup, 0);
+
+  publish("checking that the flash is unchanged", 0);
+  auto current = flash_hash(loader);
+  if (!current) return std::unexpected(current.error());
+  if (*current != first_hash) {
+    return fail("the flash changed after the backup; nothing was written (backup: " + backup + ")");
+  }
+
+  publish("erasing the firmware region", 0);
+  if (auto erased = loader.erase(kAppStart, kAppEnd - kAppStart); !erased) {
+    return std::unexpected(erased.error());
+  }
+
+  std::vector<std::uint8_t> sector(kSector);
+  for (std::uint32_t at = kAppStart; at < kAppEnd; at += kSector) {
+    if (auto read = image.read(flash_part->offset + at, sector); !read) {
+      return std::unexpected(read.error());
+    }
+    if (auto written = loader.write(at, sector); !written) {
+      return std::unexpected(written.error());
+    }
+    auto back = loader.read(at, kSector);
+    if (!back) return std::unexpected(back.error());
+    if (back->size() != sector.size() || !std::equal(back->begin(), back->end(), sector.begin())) {
+      return fail("readback mismatch at 0x" + std::to_string(at));
+    }
+    publish("writing 0x4000..0x92FFF",
+            static_cast<int>((at - kAppStart + kSector) * 100 / (kAppEnd - kAppStart)));
+  }
+
+  publish("verifying the restored firmware", 100);
+  Sha256 firmware;
+  for (std::uint32_t at = kAppStart; at < kAppEnd; at += kSector) {
+    auto data = loader.read(at, kSector);
+    if (!data) return std::unexpected(data.error());
+    firmware.update(*data);
+  }
+  if (firmware.finish() != kV15Hash) return fail("restored firmware hash mismatch");
+  publish("debrick complete: official V15 restored", 100);
   return {};
 }
 

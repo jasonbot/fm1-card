@@ -794,21 +794,18 @@ esp_err_t Net::set_theme(httpd_req_t* request) {
     httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "color=RRGGBB required");
     return ESP_FAIL;
   }
-  auto updated = update_config(*storage_, [&](Config& config) {
-    config.theme_blue = format_hex_color(*color);
-  });
+  auto updated = update_config(
+      *storage_, [&](Config& config) { config.theme_blue = format_hex_color(*color); });
   if (!updated) {
     set_cors(request);
-    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
-                        updated.error().message.c_str());
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, updated.error().message.c_str());
     return ESP_FAIL;
   }
   set_theme_blue(updated->theme_blue);
   request_theme_color(*color);
   set_cors(request);
   httpd_resp_set_type(request, "application/json");
-  const std::string body =
-      "{\"ok\":true,\"theme_blue\":\"" + updated->theme_blue + "\"}";
+  const std::string body = "{\"ok\":true,\"theme_blue\":\"" + updated->theme_blue + "\"}";
   return httpd_resp_send(request, body.data(), body.size());
 }
 

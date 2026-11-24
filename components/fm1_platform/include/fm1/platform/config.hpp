@@ -23,8 +23,7 @@ Result<void> write_config_template(Storage& storage);
 Result<void> save_config(Storage& storage, const Config& config);
 // Load, mutate and save under one lock so concurrent config writers cannot
 // lose each other's fields.
-Result<Config> update_config(Storage& storage,
-                             const std::function<void(Config&)>& mutate);
+Result<Config> update_config(Storage& storage, const std::function<void(Config&)>& mutate);
 // Trim edges, drop control characters, cap at 32 bytes, default "Cardputer".
 std::string normalize_device_name(std::string_view name);
 

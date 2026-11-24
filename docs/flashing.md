@@ -115,3 +115,14 @@ Rescue-bootloader install:
 
 Refuse to write if the model cannot be identified or the existing table
 would be overwritten outside the boot area. The backup is the escape hatch.
+
+
+## Software DEBRICK
+
+If the FM-1 appears as an MSC device with vendor `WL82` and product
+`UBOOT1.00`, the SYS pane exposes `1 DEBRICK` when no MIDI device is present.
+The action requires the local library to contain the official `FM-1_015`
+package. The worker reads the whole 1 MiB flash twice, saves a verified
+backup, re-reads before writing, erases only `0x4000..0x92FFF`, writes and
+reads back each sector, then verifies the V15 firmware-region SHA-256.
+Chip key `0x980F` and flash IDs `0x856014`/`0xB36014` are mandatory.

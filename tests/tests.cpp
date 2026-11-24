@@ -402,8 +402,7 @@ void test_theme_colors() {
   CHECK(!fm1::platform::parse_hex_color("12345").has_value());
   for (uint32_t value = 0; value <= 0xFFFF; ++value) {
     const auto color = static_cast<uint16_t>(value);
-    CHECK_EQ(fm1::platform::parse_hex_color(fm1::platform::format_hex_color(color)),
-             color);
+    CHECK_EQ(fm1::platform::parse_hex_color(fm1::platform::format_hex_color(color)), color);
   }
 }
 
