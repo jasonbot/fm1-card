@@ -200,9 +200,9 @@ number to run it. There are no mnemonic shortcuts.
   `2 FLASH` opens the local package picker, `3 DOWN` sends download mode.
   On a ROM disk, `1 ROM` opens Backup / Install-rescue-bootloader. `Enter` on
   a live MIDI device opens the flash picker.
-- **Library**: `1 DEVICE` and `2 CHIP` cycle filters, `3 HOARD` downloads
-  everything, `4 FILTER` edits the text filter, and `5 FLASH` sends the
-  selected installed package to a connected device.
+- **Library**: `1 DEVICE` and `2 CHIP` cycle filters, `3 FILTER` edits the
+  text filter, `4 FLASH` sends the selected installed package to a connected
+  device, and `5 HOARD` downloads everything.
   `Enter` downloads the selected catalog entry. Search is non-interactive:
   type while the search bar is focused, then press Enter to apply and return
   to the list (Esc clears it).

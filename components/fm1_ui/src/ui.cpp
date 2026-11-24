@@ -544,8 +544,8 @@ void Ui::footer(const UiState& state) {
         if (state.editing_filter) {
           hint1 = "TYPE   ENTER apply   ESC cancel";
         } else {
-          hint1 = "1 DEV 2 CHIP 3 HOARD 4 FILTER";
-          hint2 = "5 FLASH  ENTER DL";
+          hint1 = "1 DEV 2 CHIP 3 FILTER 4 FLASH";
+          hint2 = "5 HOARD  ENTER DL";
         }
         break;
       case Pane::System:

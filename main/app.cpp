@@ -1168,16 +1168,16 @@ void App::run_menu_action(int index) {
         state_.selection = 0;
         library_dirty_ = true;
       } else if (index == 2) {
+        state_.editing_filter = true;
+      } else if (index == 3) {
+        open_flash_targets(state_.selection);
+      } else if (index == 4) {
         popup_ = {};
         popup_.kind = PopupKind::HoardConfirm;
         popup_.title = "HOARD ALL FIRMWARE?";
         popup_.items = {"YES - download all", "NO - cancel"};
         popup_.selection = 0;
         dirty_ = true;
-      } else if (index == 3) {
-        state_.editing_filter = true;
-      } else if (index == 4) {
-        open_flash_targets(state_.selection);
       }
       break;
     case ui::Pane::System:
