@@ -545,7 +545,7 @@ void Ui::footer(const UiState& state) {
           hint1 = "TYPE   ENTER apply   ESC cancel";
         } else {
           hint1 = "1 DEV 2 CHIP 3 FILTER 4 FLASH";
-          hint2 = "5 HOARD  ENTER DL";
+          hint2 = "5 HOARD  TAB  ENTER DL";
         }
         break;
       case Pane::System:

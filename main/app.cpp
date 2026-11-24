@@ -1534,7 +1534,26 @@ void App::handle_key(const platform::KeyEvent& event) {
         const auto slot = state_.midi[static_cast<std::size_t>(state_.selection)].slot;
         router_.set_clock(slot, !router_.clock_enabled(slot));
       } else if (state_.pane == ui::Pane::Library) {
-        if (state_.selection >= static_cast<int>(state_.local.size())) {
+        if (state_.selection < static_cast<int>(state_.local.size())) {
+          const auto& package = state_.local[static_cast<std::size_t>(state_.selection)];
+          int compatible = -1;
+          int count = 0;
+          for (std::size_t i = 0; i < state_.midi.size(); ++i) {
+            const auto& port = state_.midi[i];
+            if (!port.identity.empty() && identity::package_fits(port.identity, package.product)) {
+              compatible = static_cast<int>(i);
+              ++count;
+            }
+          }
+          if (count == 1) {
+            const auto& port = state_.midi[static_cast<std::size_t>(compatible)];
+            state_.pane = ui::Pane::Devices;
+            state_.selection = compatible;
+            start_flash(platform::FlashKind::Normal, port.slot, package.path);
+          } else {
+            open_flash_targets(state_.selection);
+          }
+        } else {
           const auto index = static_cast<std::size_t>(state_.selection - state_.local.size());
           if (index < state_.catalog.size()) {
             auto path =
