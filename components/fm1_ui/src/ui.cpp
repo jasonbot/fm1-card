@@ -44,16 +44,16 @@ constexpr const char* kSystemTab[] = {
     " ########### ", "             ", "             ",
 };
 constexpr const char* kWifiIcon[] = {
-    "BBWWWWWWWBB", "BWBBBBBBBWB", "WBGGGGGGGBW", "WBGGGGGGGBW", "BWBGGGGGBWB",
+    "BWWWWWWWWWB", "WBBBBBBBBBW", "WBGGGGGGGBW", "WBGGGGGGGBW", "BWBGGGGGBWB",
     "BBWBGGGBWBB", "BBBWBGBWBBB", "BBBBWBWBBBB", "BBBBBWBBBBB", "BBBBBBBBBBB",
 };
 constexpr const char* kSdIcon[] = {
-    "WWWWWWWWW", "WGGGGGGGW", "WGGGGGGGW", "WGGGGGGGW", "WGGGGGGGW",
+    "WWWWWWWWW", "WGBGBGBGW", "WBGBGBGBW", "WGBGBGBGW", "WGGGGGGGW",
     "WGWGWGWGW", "WGWGWGWGW", "WGWGWGWGW", "WWWWWWWWB", "BBBBBBBBB",
 };
 constexpr const char* kBatteryIcon[] = {
-    "WWWWWWWWWWB", "WBBBBBBBBWB", "WBGGGGGGBWB", "WBGGGGGGBWW", "WBGGGGGGBWW",
-    "WBGGGGGGBWW", "WBGGGGGGBWB", "WBBBBBBBBWB", "WWWWWWWWWWB", "BBBBBBBBBBB",
+    "BWWWWWWWWBB", "WBBBBBBBBWB", "WBGGGGGGBWB", "WBGGGGGGBWW", "WBGGGGGGBWW",
+    "WBGGGGGGBWW", "WBGGGGGGBWB", "WBBBBBBBBWB", "BWWWWWWWWBB", "BBBBBBBBBBB",
 };
 
 template <std::size_t H>
@@ -327,7 +327,7 @@ void Ui::library(const UiState& state, int, int rows) {
   if (total == 0) {
     canvas_.text(1, 4, "No packages or catalog.", 1);
     canvas_.text(1, 5, "Put .fwsc files on the card", 2);
-    canvas_.text(1, 6, "or refresh with R.", 2);
+    canvas_.text(1, 6, "or use the desktop app.", 2);
     return;
   }
   const int first = std::clamp(state.selection - rows / 2, 0, std::max(0, total - rows));
