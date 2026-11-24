@@ -47,13 +47,12 @@ void Audio::task_entry(void* arg) {
       const std::uint32_t frames = std::min<std::uint32_t>(kChunkFrames, total - done);
       for (std::uint32_t i = 0; i < frames; ++i) {
         const double p = phase - std::floor(phase);
-        const double value = note.wave == Wave::Triangle
-                                 ? (p < 0.5 ? p * 4.0 - 1.0 : 3.0 - p * 4.0)
-                                 : note.wave == Wave::Saw ? p * 2.0 - 1.0
-                                                          : (p < 0.5 ? 1.0 : -1.0);
+        const double value = note.wave == Wave::Triangle ? (p < 0.5 ? p * 4.0 - 1.0 : 3.0 - p * 4.0)
+                             : note.wave == Wave::Saw    ? p * 2.0 - 1.0
+                                                         : (p < 0.5 ? 1.0 : -1.0);
         const double remaining = static_cast<double>(total - done - i) / kSampleRate;
-        const double envelope = std::min({1.0, static_cast<double>(done + i) / 80.0,
-                                          remaining * 80.0});
+        const double envelope =
+            std::min({1.0, static_cast<double>(done + i) / 80.0, remaining * 80.0});
         const auto sample = static_cast<int16_t>(value * envelope * 5000.0);
         pcm[i * 2] = sample;
         pcm[i * 2 + 1] = sample;
@@ -80,8 +79,8 @@ Result<void> Audio::start(void* i2c_bus) {
   }
   i2s_std_config_t std_cfg = {
       .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(kSampleRate),
-      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
-                                                       I2S_SLOT_MODE_STEREO),
+      .slot_cfg =
+          I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
       .gpio_cfg = {.mclk = I2S_GPIO_UNUSED,
                    .bclk = GPIO_NUM_41,
                    .ws = GPIO_NUM_43,
@@ -91,8 +90,7 @@ Result<void> Audio::start(void* i2c_bus) {
   };
   std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
   auto* tx = static_cast<i2s_chan_handle_t>(i2s_tx_);
-  if (i2s_channel_init_std_mode(tx, &std_cfg) != ESP_OK ||
-      i2s_channel_enable(tx) != ESP_OK) {
+  if (i2s_channel_init_std_mode(tx, &std_cfg) != ESP_OK || i2s_channel_enable(tx) != ESP_OK) {
     i2s_del_channel(tx);
     i2s_tx_ = nullptr;
     return fail("I2S config failed");

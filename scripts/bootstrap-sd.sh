@@ -7,12 +7,10 @@
 set -euo pipefail
 
 DEFAULT_MOUNT="/run/media/${USER:-user}/FM1CARD"
-CATALOG_DEFAULT="https://www.jasonscheirer.com/firmware-zoo/firmwares.json"
 
 mount_point=""
 ssid="${FM1_WIFI_SSID:-}"
 password="${FM1_WIFI_PASSWORD:-}"
-catalog_url="$CATALOG_DEFAULT"
 force=0
 dry_run=0
 no_prompt=0
@@ -25,7 +23,6 @@ usage: bootstrap-sd.sh [MOUNT] [options]
   MOUNT                 SD mount point (default: /run/media/$USER/FM1CARD)
   --ssid SSID           Wi-Fi SSID; default from FM1_WIFI_SSID
   --password PASS       Wi-Fi password; default from FM1_WIFI_PASSWORD
-  --catalog-url URL     catalog JSON (default: firmware-zoo)
   --import DIR          copy DIR/*.fwsc into fm1-card/firmwares
   --force               overwrite an existing config.json
   --no-prompt           never ask for Wi-Fi credentials
@@ -43,7 +40,6 @@ while (($#)); do
   case "$1" in
     --ssid) ssid="${2:?--ssid needs a value}"; shift 2 ;;
     --password) password="${2:?--password needs a value}"; shift 2 ;;
-    --catalog-url) catalog_url="${2:?--catalog-url needs a value}"; shift 2 ;;
     --import) import_dir="${2:?--import needs a directory}"; shift 2 ;;
     --force) force=1; shift ;;
     --no-prompt) no_prompt=1; shift ;;
@@ -93,16 +89,15 @@ if [[ -f "$config" ]] && ((!force)); then
   printf 'keeping existing %s (use --force to replace)\n' "$config"
 else
   if ((dry_run)); then
-    printf 'dry-run: write %s (ssid=%q password=%s catalog=%q)\n' \
-      "$config" "$ssid" "${password:+<set>}" "$catalog_url"
+    printf 'dry-run: write %s (ssid=%q password=%s)\n' \
+      "$config" "$ssid" "${password:+<set>}"
   else
     tmp="$config.tmp.$$"
-    python3 - "$tmp" "$ssid" "$password" "$catalog_url" <<'PY'
+    python3 - "$tmp" "$ssid" "$password" <<'PY'
 import json, sys
-path, ssid, password, catalog = sys.argv[1:5]
+path, ssid, password = sys.argv[1:4]
 with open(path, "w", encoding="utf-8") as file:
-    json.dump({"wifi": {"ssid": ssid, "password": password}, "catalog": catalog},
-              file, indent=2)
+    json.dump({"wifi": {"ssid": ssid, "password": password}}, file, indent=2)
     file.write("\n")
 PY
     mv "$tmp" "$config"
@@ -118,15 +113,15 @@ if [[ ! -f "$readme" ]]; then
     cat >"$readme" <<'EOF'
 fm1-card SD layout
 
-  config.json         Wi-Fi SSID/password and catalog URL; read at boot,
-                      so power-cycle the Cardputer after editing it
+  config.json         Wi-Fi SSID/password; read at boot
+  firmwares.json      local firmware manifest (source of truth)
   firmwares/*.fwsc    firmware packages
   backups/*.bin       full-flash backups
   logs/               optional device logs
 
 Put .fwsc files in fm1-card/firmwares or in a top-level firmwares/
-directory. In the app, Library -> R refreshes the online catalog; Devices ->
-select a unit -> F picks a local package.
+directory. The local manifest is loaded at boot and after a REST upload.
+Devices -> select a unit -> 2 FLASH picks a local package.
 EOF
   fi
 fi

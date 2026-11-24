@@ -344,4 +344,14 @@ Result<std::string> Library::package_path(std::string_view id, std::string_view 
   return storage_.path(firmwares_dir() + "/" + name);
 }
 
+Result<std::size_t> load_local_catalog(Storage& storage) {
+  if (!storage.mounted()) return fail("no SD card");
+  for (const auto& path : {Library::manifest_path(), std::string("firmwares.json")}) {
+    struct stat info{};
+    if (stat(storage.path(path).c_str(), &info) == 0 && info.st_size > 0) {
+      return build_catalog_cache(storage, path);
+    }
+  }
+  return fail("no local manifest; upload fm1-card/firmwares.json");
+}
 }  // namespace fm1::platform

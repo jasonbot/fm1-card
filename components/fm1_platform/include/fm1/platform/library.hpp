@@ -96,5 +96,7 @@ class Library {
 // Parses a catalog JSON manifest from the SD card and atomically replaces
 // catalog.bin. Accepts a bare array or {"firmwares":[...]}.
 Result<std::size_t> build_catalog_cache(Storage& storage, std::string_view json_relative);
+// Loads fm1-card/firmwares.json (or root firmwares.json) into catalog.bin.
+Result<std::size_t> load_local_catalog(Storage& storage);
 
 }  // namespace fm1::platform

@@ -10,7 +10,7 @@ is connected. There is no authentication; treat it as a trusted-LAN service.
 ## Discovery
 
 - UDP broadcast on port **8135**: send `hello` (or `FM1CARD?`).
-- Reply: `fm1-card;<ip>;80`
+- Reply: `fm1-card;<ip>;80;<device-name>`
 - HTTP API then listens at `http://<ip>/`.
 
 Example:
@@ -72,8 +72,20 @@ curl --data-binary @firmwares.json http://<device>/catalog
 ```
 
 Malformed JSON, an empty manifest, or a body over 4 MiB returns HTTP 400 and
-leaves the previous catalog untouched. `L` in the LIB pane performs the same
-import from a manifest already on the SD card.
+leaves the previous catalog untouched. A successful upload refreshes the local
+catalog immediately. The same manifest is loaded from SD at every boot.
+
+## `GET /catalog`
+
+Returns the currently installed manifest’s identity so a desktop app can decide
+whether it needs to upload again:
+
+```json
+{"name":"firmwares.json","size":419233,"sha256":"…","entries":817,"modified":1790000000}
+```
+
+`modified` is the SD modification time in Unix seconds. Returns HTTP 404 when
+no local manifest exists.
 
 ## `GET /firmwares/info?name=<file>.fwsc`
 

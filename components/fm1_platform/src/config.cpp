@@ -12,8 +12,7 @@ constexpr const char* kConfigPath = "fm1-card/config.json";
 constexpr const char* kTemplate =
     "{\n"
     "  \"device_name\": \"Cardputer\",\n"
-    "  \"wifi\": { \"ssid\": \"\", \"password\": \"\" },\n"
-    "  \"catalog\": \"https://www.jasonscheirer.com/firmware-zoo/firmwares.json\"\n"
+    "  \"wifi\": { \"ssid\": \"\", \"password\": \"\" }\n"
     "}\n";
 
 std::string json_escape(std::string_view text) {
@@ -90,8 +89,6 @@ Result<Config> load_config(Storage& storage) {
     config.ssid = value_of(lwjson_find_ex(&json, wifi, "ssid"));
     config.password = value_of(lwjson_find_ex(&json, wifi, "password"));
   }
-  const auto url = value_of(lwjson_find(&json, "catalog"));
-  if (!url.empty()) config.catalog_url = url;
   return config;
 }
 
@@ -111,9 +108,7 @@ Result<void> save_config(Storage& storage, const Config& config) {
   text += json_escape(config.ssid);
   text += "\", \"password\": \"";
   text += json_escape(config.password);
-  text += "\" },\n  \"catalog\": \"";
-  text += json_escape(config.catalog_url);
-  text += "\"\n}\n";
+  text += "\" }\n}\n";
   return storage.write_text(kConfigPath, text);
 }
 

@@ -12,7 +12,6 @@ struct Config {
   std::string device_name = "Cardputer";
   std::string ssid;
   std::string password;
-  std::string catalog_url = "https://www.jasonscheirer.com/firmware-zoo/firmwares.json";
 };
 
 Result<Config> load_config(Storage& storage);

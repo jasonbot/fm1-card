@@ -17,10 +17,10 @@ instead of asking a desktop to do it.
 
 ## What it does
 
-- **Finds firmware** in the firmware-zoo catalog over Wi-Fi and caches the
-  packages on the microSD card. Works fully offline from `*.fwsc` files on the
-  card. The zoo feed has no upstream hashes, so packages are validated by
-  their `.fwsc` identity and size, not a remote checksum.
+- **Uses a local firmware manifest** (`fm1-card/firmwares.json`) as the
+  metadata source, loaded at boot and after REST uploads, and downloads
+  package URLs from it. Works fully offline from `*.fwsc` files on the card.
+  Packages are validated by their `.fwsc` identity and size.
 - **Flashes FM-1 / SMK-37 units** in normal mode (USB-MIDI two-phase update),
   rescue mode (the same update command to an unidentified MIDI port), and
   download mode (soft-reboot into the JieLi ROM, then install the open
@@ -56,6 +56,7 @@ While Wi-Fi is connected, the device answers UDP discovery on port `8135`
 - `GET /firmwares/info?name=...` — size, hash, product, device/variant for one file
 - `POST /firmwares?name=<file>.fwsc` — upload/overwrite a package; optional
   `title`, `author`, `version`, `description`, `tags` metadata is persisted
+- `GET /catalog` — current manifest size, SHA-256, entry count and mtime
 - `POST /catalog` — upload a JSON firmware manifest; atomically rebuilds the
   catalog cache and saves it as `fm1-card/firmwares.json`
 
@@ -138,9 +139,9 @@ Set `CLANG_FORMAT=/path/to/clang-format` if the binary is not on `PATH`.
 ```
 /sdcard/
   fm1-card/
-    config.json              # Wi-Fi, device name and catalog settings
-    firmwares.json           # optional local catalog manifest
-    catalog.bin              # compact catalog cache built from the manifest/feed
+    config.json              # Wi-Fi and device name
+    firmwares.json           # local catalog manifest (source of truth)
+    catalog.bin              # cache built from firmwares.json at boot/upload
     firmwares/*.fwsc         # downloaded or imported packages
     backups/*.bin            # full-flash backups before rescue-bootloader work
     logs/fm1-card.log        # optional
@@ -152,8 +153,7 @@ Set `CLANG_FORMAT=/path/to/clang-format` if the binary is not on `PATH`.
 ```json
 {
   "device_name": "Cardputer",
-  "wifi": { "ssid": "your-ssid", "password": "your-password" },
-  "catalog": "https://www.jasonscheirer.com/firmware-zoo/firmwares.json"
+  "wifi": { "ssid": "your-ssid", "password": "your-password" }
 }
 ```
 
@@ -168,9 +168,9 @@ It creates `fm1-card/{firmwares,backups,logs}`, writes `config.json` and a
 short on-card README, and copies any `*.fwsc` from `--import`. Existing
 config and packages are kept unless `--force` is given.
 
-A local firmware manifest can be dropped at `fm1-card/firmwares.json` (bare
-array or `{"firmwares":[...]}`). Press `L` in the Library to rebuild the catalog
-cache from it. The same file can be uploaded with:
+The local firmware manifest at `fm1-card/firmwares.json` is the source of
+truth (bare array or `{"firmwares":[...]}`). It is loaded automatically at boot.
+The same file can be uploaded with:
 
 ```sh
 curl --data-binary @firmwares.json http://fm1-card/catalog
@@ -200,10 +200,9 @@ number to run it. There are no mnemonic shortcuts.
   `2 FLASH` opens the local package picker, `3 DOWN` sends download mode.
   On a ROM disk, `1 ROM` opens Backup / Install-rescue-bootloader. `Enter` on
   a live MIDI device opens the flash picker.
-- **Library**: `1 RELOAD` refreshes the catalog (Wi-Fi), `2 LOCAL` reloads
-  `fm1-card/firmwares.json`, `3 DEVICE` and `4 CHIP` cycle filters,
-  `5 HOARD` downloads everything, `6 FILTER` edits the text filter, and
-  `7 FLASH` sends the selected installed package to a connected device.
+- **Library**: `1 DEVICE` and `2 CHIP` cycle filters, `3 HOARD` downloads
+  everything, `4 FILTER` edits the text filter, and `5 FLASH` sends the
+  selected installed package to a connected device.
   `Enter` downloads the selected catalog entry. Search is non-interactive:
   type while the search bar is focused, then press Enter to apply and return
   to the list (Esc clears it).

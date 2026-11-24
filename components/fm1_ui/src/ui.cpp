@@ -486,7 +486,7 @@ void Ui::hoard(const UiState& state) {
   const int overall =
       state.hoard_total == 0 ? 0 : static_cast<int>(state.hoard_done * 100 / state.hoard_total);
   canvas_.textf(30, 0, 11, "%zu/%zu", state.hoard_done, state.hoard_total);
-  canvas_.text(0, 2, overall == 0 ? "Refreshing catalog..." : "Downloading all firmware", 1);
+  canvas_.text(0, 2, overall == 0 ? "Reading local catalog..." : "Downloading all firmware", 1);
   canvas_.fill(5, 33, 230, 10, 8);
   if (overall > 0) canvas_.fill(5, 33, 230 * overall / 100, 10, 4);
   canvas_.textf(36, 3, 1, "%3d%%", overall);
@@ -544,8 +544,8 @@ void Ui::footer(const UiState& state) {
         if (state.editing_filter) {
           hint1 = "TYPE   ENTER apply   ESC cancel";
         } else {
-          hint1 = "1 RELOAD 2 LOCAL 3 DEV 4 CHIP";
-          hint2 = "5 HOARD 6 FILTER 7 FLASH ENTER DL";
+          hint1 = "1 DEV 2 CHIP 3 HOARD 4 FILTER";
+          hint2 = "5 FLASH  ENTER DL";
         }
         break;
       case Pane::System:

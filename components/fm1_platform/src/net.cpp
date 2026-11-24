@@ -199,7 +199,6 @@ std::string Net::status_json() const {
 
 Result<void> Net::start(Storage& storage, const Config& config) {
   storage_ = &storage;
-  catalog_url_ = config.catalog_url;
   set_device_name(config.device_name);
   ssid_ = config.ssid;
   configured_.store(!ssid_.empty());
@@ -658,6 +657,32 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
   return httpd_resp_send(request, body.data(), body.size());
 }
 
+esp_err_t Net::catalog_info(httpd_req_t* request) {
+  if (storage_ == nullptr || !storage_->mounted()) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
+    return ESP_FAIL;
+  }
+  const auto path = storage_->path(Library::manifest_path());
+  struct stat info{};
+  if (stat(path.c_str(), &info) != 0 || info.st_size <= 0) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_404_NOT_FOUND, "no local manifest");
+    return ESP_FAIL;
+  }
+  const auto digest = sha256_file(path, nullptr);
+  Library library(*storage_);
+  const auto count = library.count(platform::LibraryFilter{});
+  std::string body = "{\"name\":\"" + json_escape(base_name(path)) +
+                     "\",\"size\":" + std::to_string(info.st_size) + ",\"sha256\":";
+  body += digest ? "\"" + *digest + "\"" : "null";
+  body += ",\"entries\":" + std::to_string(count.value_or(0)) +
+          ",\"modified\":" + std::to_string(info.st_mtime) + "}";
+  set_cors(request);
+  httpd_resp_set_type(request, "application/json");
+  return httpd_resp_send(request, body.data(), body.size());
+}
+
 esp_err_t Net::upload_catalog(httpd_req_t* request) {
   if (storage_ == nullptr || !storage_->mounted()) {
     set_cors(request);
@@ -737,17 +762,6 @@ esp_err_t Net::upload_catalog(httpd_req_t* request) {
   return httpd_resp_send(request, body.data(), body.size());
 }
 
-Result<std::size_t> Net::load_local_catalog() {
-  if (storage_ == nullptr || !storage_->mounted()) return fail("no SD card");
-  for (const auto& path : {Library::manifest_path(), std::string("firmwares.json")}) {
-    struct stat info{};
-    if (stat(storage_->path(path).c_str(), &info) == 0 && info.st_size > 0) {
-      return build_catalog_cache(*storage_, path);
-    }
-  }
-  return fail("no local manifest; upload fm1-card/firmwares.json");
-}
-
 Result<void> Net::start_http() {
   if (http_ != nullptr) return {};
   const auto log = [&](std::string_view text) {
@@ -807,6 +821,14 @@ Result<void> Net::start_http() {
   options.method = HTTP_OPTIONS;
   options.handler = options_handler;
   httpd_register_uri_handler(server, &options);
+
+  httpd_uri_t catalog_info = status;
+  catalog_info.uri = "/catalog";
+  catalog_info.method = HTTP_GET;
+  catalog_info.handler = [](httpd_req_t* request) {
+    return static_cast<Net*>(request->user_ctx)->catalog_info(request);
+  };
+  httpd_register_uri_handler(server, &catalog_info);
 
   httpd_uri_t catalog = status;
   catalog.uri = "/catalog";
@@ -1045,73 +1067,6 @@ Result<void> Net::fetch(const std::string& url, const ProgressFn& progress,
   }
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
-  return {};
-}
-
-Result<void> Net::refresh_catalog(const ProgressFn& progress) {
-  if (storage_ == nullptr) return fail("no storage");
-  if (!storage_->mounted()) return fail("no SD card mounted; insert the card and reboot");
-  const auto log = [&](std::string_view text) {
-    (void)storage_->write_text("fm1-card/logs/catalog.log", text);
-  };
-  log("started\n");
-  auto connected = ensure_connected();
-  if (!connected) {
-    log("failed: " + connected.error().message + "\n");
-    return connected;
-  }
-  (void)storage_->ensure_dir("fm1-card");
-  const auto final_path = storage_->path("fm1-card/catalog.bin");
-  const auto temp_path = final_path + ".tmp";
-  std::FILE* file = std::fopen(temp_path.c_str(), "wb");
-  if (file == nullptr) return fail("cannot create catalog temp file");
-
-  std::size_t entries = 0;
-  bool write_ok = true;
-  catalog::StreamParser parser([&](catalog::Entry&& entry) {
-    const auto record = catalog::encode_record(entry);
-    const uint32_t length = static_cast<uint32_t>(record.size());
-    const uint8_t header[4]{static_cast<uint8_t>(length), static_cast<uint8_t>(length >> 8),
-                            static_cast<uint8_t>(length >> 16), static_cast<uint8_t>(length >> 24)};
-    if (std::fwrite(header, 1, 4, file) != 4 ||
-        std::fwrite(record.data(), 1, record.size(), file) != record.size()) {
-      write_ok = false;
-    }
-    ++entries;
-  });
-
-  auto result = fetch(catalog_url_, progress, [&](std::span<const char> chunk) {
-    parser.feed(chunk);
-    return true;
-  });
-  if (!result) {
-    std::fclose(file);
-    std::remove(temp_path.c_str());
-    log("failed: " + result.error().message + "\n");
-    return result;
-  }
-  auto finish = parser.finish();
-  std::fflush(file);
-  std::fclose(file);
-  if (!write_ok) {
-    std::remove(temp_path.c_str());
-    log("failed: could not write the catalog cache\n");
-    return fail("could not write the catalog cache");
-  }
-  if (!finish) {
-    std::remove(temp_path.c_str());
-    log("failed: " + finish.error().message + "\n");
-    return finish;
-  }
-  log("upload validated\n");
-  std::remove(final_path.c_str());
-  if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
-    std::remove(temp_path.c_str());
-    log("failed: cannot replace the catalog cache\n");
-    return fail("cannot replace the catalog cache");
-  }
-  log("ok: " + std::to_string(entries) + " entries\n");
-  ESP_LOGI(kTag, "catalog cached: %u entries", static_cast<unsigned>(entries));
   return {};
 }
 

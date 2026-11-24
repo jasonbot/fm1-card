@@ -56,7 +56,7 @@ flowchart TB
 | `ui` | 4 | canvas, keyboard polling, app state |
 | `flash` | 3 | one flash operation at a time, claims one port |
 | `clock` | 5 | tick deadline, posts packets to `usb` |
-| `net` | 2 | Wi-Fi scan/connect, catalog fetch, package download |
+| `net` | 2 | Wi-Fi scan/connect, local catalog cache, package download |
 
 All USB API calls happen on the `usb` task. Other tasks post `TxPacket`
 items to a queue; the USB task drains it after every `tuh_task` pass. This
@@ -85,7 +85,8 @@ container (no temporary 1 MB image).
 
 ## Catalog ingestion
 
-1. `net` opens the catalog URL over HTTPS.
+1. The device reads `fm1-card/firmwares.json` from SD at boot and after a REST
+   manifest upload.
 2. Bytes are fed to `lwjson`'s stream parser one at a time.
 3. When the parser is inside `firmwares[]` at `OBJECT` depth, top-level
    fields are captured (strings may arrive in chunks; the parser decodes

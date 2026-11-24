@@ -49,6 +49,7 @@ class Net {
   esp_err_t upload_firmware(httpd_req_t* request);
   esp_err_t firmware_info(httpd_req_t* request);
   esp_err_t upload_catalog(httpd_req_t* request);
+  esp_err_t catalog_info(httpd_req_t* request);
   [[nodiscard]] std::string status_json() const;
   [[nodiscard]] bool wifi_connected() const;
   [[nodiscard]] bool wifi_configured() const {
@@ -77,8 +78,6 @@ class Net {
   void note_disconnected();
   void stop();
 
-  Result<void> refresh_catalog(const ProgressFn& progress);
-  Result<std::size_t> load_local_catalog();
   Result<void> download(const catalog::Entry& entry, const std::string& destination,
                         const ProgressFn& progress);
   // True when destination and its .meta sidecar match this entry and the
@@ -104,7 +103,6 @@ class Net {
 
  private:
   Storage* storage_ = nullptr;
-  std::string catalog_url_;
   std::string ssid_;
   mutable std::mutex name_lock_;
   std::string device_name_ = "Cardputer";

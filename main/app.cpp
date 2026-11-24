@@ -124,6 +124,9 @@ void App::run() {
     (void)storage_.ensure_dir("fm1-card/firmwares");
     (void)storage_.ensure_dir("fm1-card/backups");
     (void)storage_.ensure_dir("fm1-card/logs");
+    if (!platform::load_local_catalog(storage_)) {
+      std::remove(storage_.path(platform::Library::cache_path()).c_str());
+    }
     char boot[160]{};
     std::snprintf(
         boot, sizeof(boot), "reset=%d free=%u largest=%u\n", static_cast<int>(esp_reset_reason()),
@@ -275,28 +278,10 @@ void App::net_loop() {
         if (!started) {
           set_message("Wi-Fi: " + started.error().message, true, 15'000);
         } else if (net_.wifi_connected()) {
-          set_message("Wi-Fi connected: press R in LIB to refresh", false, 10'000);
+          set_message("Wi-Fi connected", false, 10'000);
           library_dirty_ = true;
         } else {
           set_message("Wi-Fi: still connecting...", false, 30'000);
-        }
-        break;
-      }
-      case NetCommand::Refresh: {
-        set_message(net_.wifi_connected() ? "Fetching catalog..." : "Wi-Fi: connecting...", false,
-                    30'000);
-        auto refreshed = net_.refresh_catalog([&](const platform::NetProgress& progress) {
-          if (progress.total > 0) {
-            const int pct = static_cast<int>(progress.received * 100 / progress.total);
-            set_message("Catalog: " + std::to_string(pct) + "%");
-          }
-        });
-        if (!refreshed) {
-          set_message(refreshed.error().message, true);
-        } else {
-          catalog_offset_ = 0;
-          library_dirty_ = true;
-          set_message("Catalog updated");
         }
         break;
       }
@@ -326,24 +311,9 @@ void App::net_loop() {
           std::lock_guard lock(hoard_lock_);
           hoard_ = HoardState{};
           hoard_.active = true;
-          hoard_.current = "refreshing catalog";
+          hoard_.current = "reading catalog";
         }
-        set_message("HOARD: refreshing catalog...", false, 0);
-        auto refreshed = net_.refresh_catalog([&](const platform::NetProgress& progress) {
-          std::lock_guard lock(hoard_lock_);
-          if (progress.total > 0) {
-            hoard_.percent = static_cast<int>(progress.received * 100 / progress.total);
-          }
-        });
-        if (!refreshed) {
-          {
-            std::lock_guard lock(hoard_lock_);
-            hoard_.active = false;
-            hoard_.error = true;
-          }
-          set_message("HOARD failed: " + refreshed.error().message, true, 20'000);
-          break;
-        }
+        set_message("HOARD starting...", false, 0);
         auto total = library_.count(platform::LibraryFilter{});
         if (!total) {
           std::lock_guard lock(hoard_lock_);
@@ -492,18 +462,6 @@ void App::net_loop() {
           set_message("Device name: " + saved.error().message, true, 15'000);
         } else {
           set_message("Device name: " + job.name, false, 8'000);
-        }
-        break;
-      }
-      case NetCommand::LoadLocalCatalog: {
-        set_message("Catalog: reading local manifest...", false, 30'000);
-        auto loaded = net_.load_local_catalog();
-        if (!loaded) {
-          set_message(loaded.error().message, true, 15'000);
-        } else {
-          catalog_offset_ = 0;
-          library_dirty_ = true;
-          set_message("Local manifest: " + std::to_string(*loaded) + " entries", false, 10'000);
         }
         break;
       }
@@ -1163,23 +1121,6 @@ void App::run_menu_action(int index) {
       break;
     case ui::Pane::Library:
       if (index == 0) {
-        queue_net({.command = NetCommand::Refresh,
-                   .entry = {},
-                   .destination = {},
-                   .ssid = {},
-                   .password = {},
-                   .name = {}});
-        set_message(net_.wifi_connected() ? "Refreshing catalog..." : "Wi-Fi: connecting...", false,
-                    30'000);
-      } else if (index == 1) {
-        queue_net({.command = NetCommand::LoadLocalCatalog,
-                   .entry = {},
-                   .destination = {},
-                   .ssid = {},
-                   .password = {},
-                   .name = {}});
-        set_message("Loading local catalog manifest...", false, 10'000);
-      } else if (index == 2) {
         if (!library_filter_.device)
           library_filter_.device = catalog::Device::Fm1;
         else if (*library_filter_.device == catalog::Device::Fm1)
@@ -1191,7 +1132,7 @@ void App::run_menu_action(int index) {
         local_offset_ = 0;
         state_.selection = 0;
         library_dirty_ = true;
-      } else if (index == 3) {
+      } else if (index == 1) {
         if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
           library_filter_.variant =
               library_filter_.variant == catalog::SmkVariant::All     ? catalog::SmkVariant::Pro
@@ -1208,16 +1149,16 @@ void App::run_menu_action(int index) {
         local_offset_ = 0;
         state_.selection = 0;
         library_dirty_ = true;
-      } else if (index == 4) {
+      } else if (index == 2) {
         popup_ = {};
         popup_.kind = PopupKind::HoardConfirm;
         popup_.title = "HOARD ALL FIRMWARE?";
         popup_.items = {"YES - download all", "NO - cancel"};
         popup_.selection = 0;
         dirty_ = true;
-      } else if (index == 5) {
+      } else if (index == 3) {
         state_.editing_filter = true;
-      } else if (index == 6) {
+      } else if (index == 4) {
         open_flash_targets(state_.selection);
       }
       break;
