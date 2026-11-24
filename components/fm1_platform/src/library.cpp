@@ -148,43 +148,56 @@ Result<std::optional<catalog::Entry>> Library::find(std::string_view id) {
   return std::optional<catalog::Entry>{};
 }
 
-Result<std::vector<LocalPackage>> Library::local_packages(std::size_t limit,
-                                                          std::size_t* total) {
+Result<std::vector<LocalPackage>> Library::local_packages_page(
+    std::size_t offset, std::size_t limit, std::size_t* total,
+    std::string_view text) {
   std::vector<LocalPackage> out;
   if (!storage_.mounted()) return out;
-  std::size_t found = 0;
-  const std::array<std::string, 2> dirs{"fm1-card/firmwares", "firmwares"};
-  for (const auto& dir : dirs) {
+  std::vector<std::string> paths;
+  for (const auto& dir : std::array<std::string, 2>{"fm1-card/firmwares", "firmwares"}) {
     DIR* handle = opendir(storage_.path(dir).c_str());
     if (handle == nullptr) continue;
     while (dirent* item = readdir(handle)) {
       const std::string name = item->d_name;
       if (name.size() < 6 || name.substr(name.size() - 5) != ".fwsc") continue;
-      ++found;
-      if (out.size() >= limit) continue;
-      const auto path = storage_.path(dir + "/" + name);
-      FileReader reader;
-      if (!reader.open(path)) continue;
-      auto layout = package::inspect(reader);
-      if (!layout) continue;
-      std::string display = name.substr(0, name.size() - 5);
-      for (char& c : display) {
-        if (c == '_') c = ' ';
-      }
-      out.push_back(LocalPackage{.path = path,
-                                 .name = std::move(display),
-                                 .product = layout->product,
-                                 .device = catalog::device_from_product(layout->product),
-                                 .variant = catalog::smk_variant_from_product(layout->product),
-                                 .size = layout->file_size,
-                                 .blocks = static_cast<uint8_t>(layout->blocks)});
+      paths.push_back(storage_.path(dir + "/" + name));
     }
     closedir(handle);
   }
-  if (total != nullptr) *total = found;
-  std::sort(out.begin(), out.end(),
-            [](const LocalPackage& a, const LocalPackage& b) { return a.path < b.path; });
+  std::sort(paths.begin(), paths.end());
+  if (!text.empty()) {
+    std::erase_if(paths, [&](const std::string& path) {
+      catalog::Entry entry;
+      entry.name = path;
+      return !catalog::matches(entry, text);
+    });
+  }
+  if (total != nullptr) *total = paths.size();
+  const std::size_t end = std::min(paths.size(), offset + limit);
+  for (std::size_t i = offset; i < end; ++i) {
+    FileReader reader;
+    if (!reader.open(paths[i])) continue;
+    auto layout = package::inspect(reader);
+    if (!layout) continue;
+    std::string display = paths[i].substr(paths[i].rfind('/') + 1);
+    display.resize(display.size() - 5);
+    for (char& c : display) {
+      if (c == '_') c = ' ';
+    }
+    out.push_back(LocalPackage{.path = paths[i],
+                               .name = std::move(display),
+                               .product = layout->product,
+                               .device = catalog::device_from_product(layout->product),
+                               .variant = catalog::smk_variant_from_product(layout->product),
+                               .size = layout->file_size,
+                               .blocks = static_cast<uint8_t>(layout->blocks)});
+  }
   return out;
+}
+
+Result<std::vector<LocalPackage>> Library::local_packages(std::size_t limit,
+                                                          std::size_t* total) {
+  return local_packages_page(0, limit, total, {});
 }
 
 Result<std::size_t> Library::local_count() {

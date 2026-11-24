@@ -1,4 +1,4 @@
 cmake_minimum_required(VERSION 3.22)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(fm1-card VERSION 0.1.3 LANGUAGES CXX C)
+project(fm1-card VERSION 0.1.4 LANGUAGES CXX C)

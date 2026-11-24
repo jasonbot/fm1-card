@@ -10,6 +10,7 @@
 #include "esp_system.h"
 #include <chrono>
 #include <cstdio>
+#include <sys/stat.h>
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -22,6 +23,7 @@ namespace fm1 {
 namespace {
 
 constexpr const char* kTag = "fm1-app";
+constexpr std::size_t kPackagePage = 32;
 
 void blit_cb(void* context, int x, int y, int width, int height,
              std::span<const uint16_t> pixels) {
@@ -137,6 +139,25 @@ void App::set_message(std::string message, bool error, uint32_t ttl_ms) {
   dirty_ = true;
 }
 
+void App::show_waiting(std::string_view text) {
+  constexpr int kWidth = 180;
+  constexpr int kHeight = 101;
+  constexpr int kX = (240 - kWidth) / 2;
+  constexpr int kY = (135 - kHeight) / 2;
+  ui_.canvas().fill(kX, kY, kWidth, kHeight, 11);
+  ui_.canvas().frame(kX, kY, kWidth, kHeight, 1);
+  constexpr std::string_view kWaiting = "WAITING...";
+  const int waiting_x = kX + (kWidth - static_cast<int>(kWaiting.size()) * 6) / 2;
+  ui_.canvas().draw_text(waiting_x, kY + 8, kWaiting, 1, kX + kWidth);
+  const int max_chars = (kWidth - 8) / 6;
+  std::string detail(text.substr(0, std::min<std::size_t>(text.size(), max_chars)));
+  const int detail_x = kX + (kWidth - static_cast<int>(detail.size()) * 6) / 2;
+  const int detail_y = kY + (kHeight - 7) / 2;
+  ui_.canvas().draw_text(detail_x, detail_y, detail, 1, kX + kWidth - 4);
+  ui_.canvas().present(&display_, blit_cb);
+  vTaskDelay(pdMS_TO_TICKS(1));
+}
+
 void App::boot_stage(std::string_view stage, bool error) {
   ui_.canvas().clear(0);
   ui_.canvas().fill(0, 0, 240, 8, error ? 6 : 3);
@@ -159,7 +180,11 @@ void App::ui_loop() {
     while (auto event = keyboard_.poll()) handle_key(*event);
 
     if (net_.take_library_change()) library_dirty_ = true;
-    if (library_dirty_.exchange(false)) refresh_library();
+    if (library_dirty_.exchange(false)) {
+      const bool filter_only = filter_refresh_;
+      filter_refresh_ = false;
+      refresh_library(false, !filter_only, true);
+    }
 
     const uint64_t now = esp_timer_get_time() / 1000;
     if (dirty_.exchange(false) || now - last_draw > 200) {
@@ -461,20 +486,23 @@ void App::net_loop() {
   }
 }
 
-void App::refresh_library(bool keep_shift) {
-  std::size_t local_total = 0;
-  state_.local = library_.local_packages(32, &local_total)
-                     .value_or(std::vector<platform::LocalPackage>{});
-  state_.local_total = local_total;
-  if (library_filter_.device) {
-    std::erase_if(state_.local, [&](const platform::LocalPackage& local) {
-      return local.device != *library_filter_.device;
-    });
-  }
-  if (library_filter_.variant != catalog::SmkVariant::All) {
-    std::erase_if(state_.local, [&](const platform::LocalPackage& local) {
-      return local.variant != library_filter_.variant;
-    });
+void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
+  if (show_wait) show_waiting("READING LIBRARY");
+  if (reload_local) {
+    std::size_t local_total = 0;
+    state_.local = library_.local_packages_page(0, 32, &local_total, state_.filter)
+                       .value_or(std::vector<platform::LocalPackage>{});
+    state_.local_total = local_total;
+    if (library_filter_.device) {
+      std::erase_if(state_.local, [&](const platform::LocalPackage& local) {
+        return local.device != *library_filter_.device;
+      });
+    }
+    if (library_filter_.variant != catalog::SmkVariant::All) {
+      std::erase_if(state_.local, [&](const platform::LocalPackage& local) {
+        return local.variant != library_filter_.variant;
+      });
+    }
   }
   library_filter_.text = state_.filter;
   auto total = library_.count(library_filter_);
@@ -484,6 +512,14 @@ void App::refresh_library(bool keep_shift) {
   auto entries = library_.page(library_filter_, catalog_offset_, page);
   state_.catalog = entries.value_or(std::vector<catalog::Entry>{});
   state_.catalog_total = catalog_total_;
+  state_.catalog_installed.assign(state_.catalog.size(), false);
+  for (std::size_t i = 0; i < state_.catalog.size(); ++i) {
+    auto path = library_.package_path(state_.catalog[i].id, state_.catalog[i].version);
+    struct stat info {};
+    if (path && stat(path->c_str(), &info) == 0) {
+      state_.catalog_installed[i] = true;
+    }
+  }
   if (!library_filter_.device) {
     state_.device_filter = "ALL";
   } else if (*library_filter_.device == catalog::Device::Fm1) {
@@ -539,7 +575,18 @@ void App::sync_ui() {
   state_.ip = net_.local_ip();
   state_.rssi = net_.wifi_rssi();
   state_.sd_mounted = storage_.mounted();
+  const uint64_t battery_now = static_cast<uint64_t>(esp_timer_get_time());
   state_.battery = battery_.percent();
+  if (last_battery_check_us_ == 0 || battery_now - last_battery_check_us_ > 15'000'000) {
+    const int mv = battery_.millivolts();
+    if (mv >= 0 && last_battery_mv_ >= 0) {
+      if (mv >= last_battery_mv_ + 4) battery_charging_ = true;
+      else if (mv + 4 < last_battery_mv_) battery_charging_ = false;
+    }
+    if (mv >= 0) last_battery_mv_ = mv;
+    last_battery_check_us_ = battery_now;
+  }
+  state_.battery_charging = battery_charging_;
   {
     std::lock_guard lock(message_lock_);
     state_.message =
@@ -589,6 +636,8 @@ void App::sync_ui() {
     popup_.items.push_back("ENTER save   ESC cancel");
     popup_.selection = 0;
   }
+  state_.popup_hint =
+      popup_.kind == PopupKind::Packages ? "ESC Back   ENTER Flash" : std::string{};
   state_.popup = popup_.kind != PopupKind::None;
   state_.popup_title = popup_.title;
   state_.popup_items = popup_.items;
@@ -646,6 +695,12 @@ void App::sync_ui() {
   json += item;
   json += ",\"hoard\":";
   json += state_.hoard_active ? "true" : "false";
+  json += ",\"key\":\"" + json_escape(last_key_) + "\",\"flash\":{\"running\":";
+  json += state_.flash.running ? "true" : "false";
+  json += ",\"error\":";
+  json += state_.flash.error ? "true" : "false";
+  json += ",\"step\":\"" + json_escape(state_.flash.step) + "\",\"package\":\"" +
+          json_escape(state_.flash.package) + "\"}";
   json += "}";
   {
     std::lock_guard lock(status_lock_);
@@ -701,25 +756,156 @@ void App::set_bpm(int delta) {
 
 void App::open_packages(int slot) {
   auto port = usb_.midi_port(slot);
-  if (!port) return;
+  if (!port) {
+    set_message("That MIDI port is gone", true);
+    return;
+  }
   popup_ = {};
   popup_.kind = PopupKind::Packages;
-  popup_.title = "FLASH " + label_of(*port);
   popup_.context = slot;
-  for (std::size_t i = 0; i < state_.local.size(); ++i) {
-    const auto& local = state_.local[i];
+  load_package_page(0);
+  if (package_total_ == 0) {
+    popup_ = {};
+    set_message("No local packages: download or upload one first", true);
+    return;
+  }
+  dirty_ = true;
+}
+
+void App::load_package_page(std::size_t offset) {
+  show_waiting("READING FIRMWARE LIST");
+  std::size_t total = 0;
+  auto page = library_.local_packages_page(offset, kPackagePage, &total);
+  package_choices_ = page.value_or(std::vector<platform::LocalPackage>{});
+  package_total_ = total;
+  if (package_choices_.empty() && total > 0 && offset > 0) {
+    const std::size_t last = ((total - 1) / kPackagePage) * kPackagePage;
+    package_choices_ = library_.local_packages_page(last, kPackagePage, &total)
+                           .value_or(std::vector<platform::LocalPackage>{});
+    package_total_ = total;
+    offset = last;
+  }
+  package_offset_ = offset;
+  load_package_metadata();
+  build_package_popup();
+  popup_.selection = 0;
+  dirty_ = true;
+}
+
+void App::load_package_metadata() {
+  package_meta_.assign(package_choices_.size(), PackageMeta{});
+  if (package_choices_.empty()) return;
+  std::unordered_map<std::string, std::size_t> by_path;
+  by_path.reserve(package_choices_.size());
+  for (std::size_t i = 0; i < package_choices_.size(); ++i) {
+    by_path.emplace(package_choices_[i].path, i);
+  }
+  (void)library_.for_each([&](const catalog::Entry& entry) {
+    auto path = library_.package_path(entry.id, entry.version);
+    if (!path) return true;
+    const auto found = by_path.find(*path);
+    if (found == by_path.end()) return true;
+    PackageMeta& meta = package_meta_[found->second];
+    meta.name = entry.name;
+    if (!entry.version.empty()) meta.name += " " + entry.version;
+    meta.new_chip = catalog::works_on_new_chip(entry);
+    meta.old_chip = catalog::works_on_old_chip(entry);
+    return true;
+  });
+}
+
+void App::build_package_popup() {
+  auto port = usb_.midi_port(static_cast<uint8_t>(popup_.context));
+  if (!port) return;
+  popup_.items.clear();
+  popup_.values.clear();
+  popup_.paths.clear();
+  for (std::size_t choice = 0; choice < package_choices_.size(); ++choice) {
+    const auto& local = package_choices_[choice];
     if (!port->identity.empty() &&
         !identity::package_fits(port->identity, local.product)) {
       continue;
     }
-    popup_.items.push_back(local.product + "  " + std::to_string(local.size / 1024) + "K");
+    if (library_filter_.device && local.device != *library_filter_.device) continue;
+    if (local.device == catalog::Device::Smk37) {
+      if (library_filter_.variant != catalog::SmkVariant::All &&
+          local.variant != library_filter_.variant) {
+        continue;
+      }
+    } else if (library_filter_.chip != platform::ChipFilter::All) {
+      if (choice >= package_meta_.size()) continue;
+      const auto& meta = package_meta_[choice];
+      if (library_filter_.chip == platform::ChipFilter::New && !meta.new_chip) {
+        continue;
+      }
+      if (library_filter_.chip == platform::ChipFilter::Old && !meta.old_chip) {
+        continue;
+      }
+    }
+    const bool has_meta = choice < package_meta_.size() && !package_meta_[choice].name.empty();
+    std::string label = has_meta ? package_meta_[choice].name : local.name;
+    if (label.empty()) label = local.product;
+    if (has_meta) {
+      if (package_meta_[choice].new_chip && package_meta_[choice].old_chip) label += " [ANY]";
+      else if (package_meta_[choice].new_chip) label += " [NEW]";
+      else if (package_meta_[choice].old_chip) label += " [OLD]";
+      else label += " [?]";
+    }
+    popup_.items.push_back(std::move(label));
+    popup_.values.push_back(static_cast<int>(choice));
+  }
+  std::string filter = "ALL";
+  if (library_filter_.device) {
+    filter = *library_filter_.device == catalog::Device::Smk37 ? "SMK" : "FM1";
+    if (*library_filter_.device == catalog::Device::Smk37) {
+      switch (library_filter_.variant) {
+        case catalog::SmkVariant::Pro: filter += "/PRO"; break;
+        case catalog::SmkVariant::Elite: filter += "/ELITE"; break;
+        case catalog::SmkVariant::Mke: filter += "/MKE"; break;
+        default: break;
+      }
+    } else {
+      switch (library_filter_.chip) {
+        case platform::ChipFilter::New: filter += "/NEW"; break;
+        case platform::ChipFilter::Old: filter += "/OLD"; break;
+        default: break;
+      }
+    }
+  }
+  const std::size_t page = package_offset_ / kPackagePage + 1;
+  const std::size_t pages = std::max<std::size_t>(1, (package_total_ + kPackagePage - 1) / kPackagePage);
+  popup_.title = "FLASH " + std::to_string(page) + "/" + std::to_string(pages) + " " + filter;
+  if (popup_.items.empty()) {
+    popup_.items.push_back("No matching packages");
+  }
+  popup_.selection = std::clamp(
+      popup_.selection, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
+}
+
+void App::open_flash_targets(int local_index) {
+  if (local_index < 0 || local_index >= static_cast<int>(state_.local.size())) {
+    set_message("Select an installed firmware first", true);
+    return;
+  }
+  const auto& package = state_.local[static_cast<std::size_t>(local_index)];
+  popup_ = {};
+  popup_.kind = PopupKind::FlashTargets;
+  popup_.title = "FLASH " + package.name;
+  popup_.paths = {package.path};
+  for (std::size_t i = 0; i < state_.midi.size(); ++i) {
+    const auto& port = state_.midi[i];
+    if (!port.identity.empty() && !identity::package_fits(port.identity, package.product)) {
+      continue;
+    }
+    popup_.items.push_back(label_of(port));
     popup_.values.push_back(static_cast<int>(i));
   }
   if (popup_.items.empty()) {
     popup_ = {};
-    set_message("No compatible local package", true);
+    set_message("No compatible live device", true);
     return;
   }
+  popup_.selection = 0;
   dirty_ = true;
 }
 
@@ -776,12 +962,17 @@ void App::run_popup_action() {
       popup_ = {};
       return;
     }
-    const auto& local = state_.local[static_cast<std::size_t>(
-        popup_.values[static_cast<std::size_t>(popup_.selection)])];
+    const int choice = popup_.values[static_cast<std::size_t>(popup_.selection)];
+    if (choice < 0 || choice >= static_cast<int>(package_choices_.size())) {
+      popup_ = {};
+      return;
+    }
+    const std::string& path =
+        package_choices_[static_cast<std::size_t>(choice)].path;
     auto port = usb_.midi_port(static_cast<uint8_t>(popup_.context));
     const auto kind = (port && !port->identity.empty()) ? platform::FlashKind::Normal
                                                        : platform::FlashKind::Rescue;
-    start_flash(kind, static_cast<uint8_t>(popup_.context), local.path);
+    start_flash(kind, static_cast<uint8_t>(popup_.context), path);
     popup_ = {};
   } else if (popup_.kind == PopupKind::Sinks) {
     if (popup_.selection < 0 ||
@@ -801,6 +992,24 @@ void App::run_popup_action() {
       set_message("HOARD starting...", false, 10'000);
     }
     popup_ = {};
+  } else if (popup_.kind == PopupKind::FlashTargets) {
+    if (popup_.paths.empty() || popup_.selection < 0 ||
+        popup_.selection >= static_cast<int>(popup_.values.size())) {
+      popup_ = {};
+      return;
+    }
+    const int target = popup_.values[static_cast<std::size_t>(popup_.selection)];
+    if (target < 0 || target >= static_cast<int>(state_.midi.size())) {
+      popup_ = {};
+      return;
+    }
+    const auto& port = state_.midi[static_cast<std::size_t>(target)];
+    state_.pane = ui::Pane::Devices;
+    state_.selection = target;
+    const auto kind = port.identity.empty() ? platform::FlashKind::Rescue
+                                            : platform::FlashKind::Normal;
+    start_flash(kind, port.slot, popup_.paths.front());
+    popup_ = {};
   } else if (popup_.kind == PopupKind::MscActions) {
     if (popup_.selection == 0) {
       start_flash(platform::FlashKind::Backup, static_cast<uint8_t>(popup_.context), {});
@@ -813,6 +1022,7 @@ void App::run_popup_action() {
 }
 
 void App::start_flash(platform::FlashKind kind, uint8_t slot, const std::string& package) {
+  show_waiting("STARTING FLASH");
   router_.set_clock(slot, false);
   platform::FlashJob job{.kind = kind,
                           .slot = slot,
@@ -823,6 +1033,113 @@ void App::start_flash(platform::FlashKind kind, uint8_t slot, const std::string&
     return;
   }
   set_message("Flashing...");
+}
+
+void App::run_menu_action(int index) {
+  switch (state_.pane) {
+    case ui::Pane::Devices:
+      if (state_.selection < static_cast<int>(state_.midi.size())) {
+        const auto slot = state_.midi[static_cast<std::size_t>(state_.selection)].slot;
+        if (index == 0) router_.set_clock(slot, !router_.clock_enabled(slot));
+        else if (index == 1) open_packages(slot);
+        else if (index == 2)
+          start_flash(platform::FlashKind::DownloadMode, slot, {});
+        else if (index > 2) set_message("Only MIDI devices can flash", true);
+      } else if (index == 0) {
+        const auto msc = static_cast<std::size_t>(state_.selection - state_.midi.size());
+        if (msc < state_.msc.size()) open_msc_actions(state_.msc[msc].slot);
+      } else {
+        set_message("Select a MIDI device first", true);
+      }
+      break;
+    case ui::Pane::Routes:
+      if (index == 0 && state_.selection < static_cast<int>(state_.midi.size())) {
+        open_sinks(state_.selection);
+      } else if (index == 1) {
+        router_.clear();
+        set_message("Routes cleared");
+      }
+      break;
+    case ui::Pane::Clock:
+      if (index == 0) {
+        toggle_clock();
+      } else if (index == 1) {
+        router_.set_clock_all(!router_.any_clock());
+      } else if (index == 2) {
+        set_bpm(-5);
+      } else if (index == 3) {
+        set_bpm(5);
+      } else if (index == 4 && state_.selection < static_cast<int>(state_.midi.size())) {
+        const auto slot = state_.midi[static_cast<std::size_t>(state_.selection)].slot;
+        router_.set_clock(slot, !router_.clock_enabled(slot));
+      }
+      break;
+    case ui::Pane::Library:
+      if (index == 0) {
+        queue_net({.command = NetCommand::Refresh,
+                   .entry = {},
+                   .destination = {},
+                   .ssid = {},
+                   .password = {},
+                   .name = {}});
+        set_message(net_.wifi_connected() ? "Refreshing catalog..."
+                                          : "Wi-Fi: connecting...", false, 30'000);
+      } else if (index == 1) {
+        queue_net({.command = NetCommand::LoadLocalCatalog,
+                   .entry = {},
+                   .destination = {},
+                   .ssid = {},
+                   .password = {},
+                   .name = {}});
+        set_message("Loading local catalog manifest...", false, 10'000);
+      } else if (index == 2) {
+        if (!library_filter_.device) library_filter_.device = catalog::Device::Fm1;
+        else if (*library_filter_.device == catalog::Device::Fm1)
+          library_filter_.device = catalog::Device::Smk37;
+        else library_filter_.device.reset();
+        library_filter_.variant = catalog::SmkVariant::All;
+        catalog_offset_ = 0;
+        state_.selection = 0;
+        library_dirty_ = true;
+      } else if (index == 3) {
+        if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
+          library_filter_.variant =
+              library_filter_.variant == catalog::SmkVariant::All
+                  ? catalog::SmkVariant::Pro
+                  : library_filter_.variant == catalog::SmkVariant::Pro
+                        ? catalog::SmkVariant::Elite
+                        : library_filter_.variant == catalog::SmkVariant::Elite
+                              ? catalog::SmkVariant::Mke
+                              : catalog::SmkVariant::All;
+        } else {
+          library_filter_.chip = library_filter_.chip == platform::ChipFilter::All
+                                     ? platform::ChipFilter::New
+                                     : library_filter_.chip == platform::ChipFilter::New
+                                           ? platform::ChipFilter::Old
+                                           : platform::ChipFilter::All;
+        }
+        catalog_offset_ = 0;
+        state_.selection = 0;
+        library_dirty_ = true;
+      } else if (index == 4) {
+        popup_ = {};
+        popup_.kind = PopupKind::HoardConfirm;
+        popup_.title = "HOARD ALL FIRMWARE?";
+        popup_.items = {"YES - download all", "NO - cancel"};
+        popup_.selection = 0;
+        dirty_ = true;
+      } else if (index == 5) {
+        state_.editing_filter = true;
+      } else if (index == 6) {
+        open_flash_targets(state_.selection);
+      }
+      break;
+    case ui::Pane::System:
+      if (index == 0) open_wifi_dialog();
+      else if (index == 1) open_name_dialog();
+      break;
+  }
+  dirty_ = true;
 }
 
 void App::handle_popup_key(const platform::KeyEvent& event) {
@@ -889,6 +1206,80 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
     }
     return;
   }
+  if (popup_.kind == PopupKind::Packages) {
+    if (event.character == 't' || event.character == 'T') {
+      if (!library_filter_.device) {
+        library_filter_.device = catalog::Device::Fm1;
+      } else if (*library_filter_.device == catalog::Device::Fm1) {
+        library_filter_.device = catalog::Device::Smk37;
+      } else {
+        library_filter_.device.reset();
+      }
+      library_filter_.variant = catalog::SmkVariant::All;
+      load_package_page(0);
+      return;
+    }
+    if (event.character == 'c' || event.character == 'C') {
+      if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
+        library_filter_.variant =
+            library_filter_.variant == catalog::SmkVariant::All
+                ? catalog::SmkVariant::Pro
+                : library_filter_.variant == catalog::SmkVariant::Pro
+                      ? catalog::SmkVariant::Elite
+                      : library_filter_.variant == catalog::SmkVariant::Elite
+                            ? catalog::SmkVariant::Mke
+                            : catalog::SmkVariant::All;
+      } else {
+        library_filter_.chip = library_filter_.chip == platform::ChipFilter::All
+                                   ? platform::ChipFilter::New
+                                   : library_filter_.chip == platform::ChipFilter::New
+                                         ? platform::ChipFilter::Old
+                                         : platform::ChipFilter::All;
+      }
+      load_package_page(0);
+      return;
+    }
+    if (event.ctrl && (event.code == 0x52 || event.code == 0x51)) {
+      constexpr int kSkip = 5;
+      const int delta = event.code == 0x52 ? -kSkip : kSkip;
+      const int target = popup_.selection + delta;
+      if (target >= 0 && target < static_cast<int>(popup_.items.size())) {
+        popup_.selection = target;
+        dirty_ = true;
+        return;
+      }
+      if (target >= static_cast<int>(popup_.items.size()) &&
+          package_offset_ + kPackagePage < package_total_) {
+        const int overflow = target - static_cast<int>(popup_.items.size());
+        load_package_page(package_offset_ + kPackagePage);
+        popup_.selection = std::clamp(overflow, 0,
+                                      std::max(0, static_cast<int>(popup_.items.size()) - 1));
+        return;
+      }
+      if (target < 0 && package_offset_ > 0) {
+        load_package_page(package_offset_ - kPackagePage);
+        popup_.selection = std::clamp(static_cast<int>(popup_.items.size()) + target, 0,
+                                      std::max(0, static_cast<int>(popup_.items.size()) - 1));
+        return;
+      }
+      popup_.selection = std::clamp(target, 0,
+                                    std::max(0, static_cast<int>(popup_.items.size()) - 1));
+      dirty_ = true;
+      return;
+    }
+    if (event.code == 0x51 &&
+        popup_.selection + 1 >= static_cast<int>(popup_.items.size()) &&
+        package_offset_ + kPackagePage < package_total_) {
+      load_package_page(package_offset_ + kPackagePage);
+      return;
+    }
+    if (event.code == 0x52 && popup_.selection == 0 && package_offset_ > 0) {
+      const std::size_t page = package_offset_ / kPackagePage;
+      load_package_page((page - 1) * kPackagePage);
+      popup_.selection = std::max(0, static_cast<int>(popup_.items.size()) - 1);
+      return;
+    }
+  }
   if (popup_.kind == PopupKind::DeviceName) {
     if (event.code == 0x29) {
       popup_ = {};
@@ -942,6 +1333,12 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
 }
 
 void App::handle_key(const platform::KeyEvent& event) {
+  if (event.kind == platform::KeyKind::Press) {
+    char key[48]{};
+    std::snprintf(key, sizeof(key), "c=%d code=%d fn=%d sh=%d", event.character,
+                  static_cast<int>(event.code), event.fn ? 1 : 0, event.shift ? 1 : 0);
+    last_key_ = key;
+  }
   {
     std::lock_guard lock(hoard_lock_);
     if (hoard_.active) {
@@ -961,35 +1358,42 @@ void App::handle_key(const platform::KeyEvent& event) {
   if (state_.editing_filter) {
     if (event.code == 0x28) {
       state_.editing_filter = false;
+      filter_refresh_ = true;
       catalog_offset_ = 0;
+      state_.selection = 0;
       library_dirty_ = true;
     } else if (event.code == 0x29) {
       state_.editing_filter = false;
+      filter_refresh_ = true;
       state_.filter.clear();
       catalog_offset_ = 0;
+      state_.selection = 0;
       library_dirty_ = true;
     } else if (event.code == 0x2A) {
       if (!state_.filter.empty()) state_.filter.pop_back();
-      catalog_offset_ = 0;
-      state_.selection = 0;
-      library_dirty_ = true;
     } else if (event.character >= 32 && event.character < 127) {
       state_.filter.push_back(event.character);
-      catalog_offset_ = 0;
-      state_.selection = 0;
-      library_dirty_ = true;
     }
     dirty_ = true;
     return;
   }
 
+  if (event.character >= '1' && event.character <= '9') {
+    run_menu_action(event.character - '1');
+    return;
+  }
+  if (const auto pos = std::string_view{"!@#$%^&*("}.find(event.character);
+      pos != std::string_view::npos) {
+    run_menu_action(static_cast<int>(pos));
+    return;
+  }
+  if (event.code >= 0x3A && event.code <= 0x42) {
+    run_menu_action(event.code - 0x3A);
+    return;
+  }
+
   switch (event.code) {
-    case 0x3A: state_.pane = ui::Pane::Devices; state_.selection = 0; break;
-    case 0x3B: state_.pane = ui::Pane::Routes; state_.selection = 0; break;
-    case 0x3C: state_.pane = ui::Pane::Clock; state_.selection = 0; break;
-    case 0x3D: state_.pane = ui::Pane::Library; state_.selection = 0; break;
-    case 0x3E: state_.pane = ui::Pane::System; state_.selection = 0; break;
-    case 0x2B: cycle_pane(1); break;
+    case 0x2B: cycle_pane(event.ctrl ? -1 : 1); break;
     case 0x29:
       if (clock_.running()) {
         toggle_clock();
@@ -1008,16 +1412,31 @@ void App::handle_key(const platform::KeyEvent& event) {
         case ui::Pane::Library: limit = state_.local.size() + state_.catalog.size(); break;
         case ui::Pane::System: limit = 0; break;
       }
-      constexpr std::size_t kLibraryPage = 5;
+      constexpr std::size_t kLibraryPage = 20;
+      constexpr int kLibrarySkip = 5;
       if (state_.pane == ui::Pane::Library && event.ctrl) {
-        if (delta > 0 && catalog_offset_ + kLibraryPage < catalog_total_) {
-          catalog_offset_ += kLibraryPage;
-          state_.selection = 0;
-          library_dirty_ = true;
-        } else if (delta < 0 && catalog_offset_ >= kLibraryPage) {
-          catalog_offset_ -= kLibraryPage;
-          state_.selection = 0;
-          library_dirty_ = true;
+        const int target = state_.selection + delta * kLibrarySkip;
+        if (target < 0) {
+          if (catalog_offset_ >= kLibraryPage) {
+            catalog_offset_ -= kLibraryPage;
+            state_.selection = static_cast<int>(state_.local.size());
+            library_dirty_ = true;
+          } else {
+            state_.selection = 0;
+            dirty_ = true;
+          }
+        } else if (target >= limit) {
+          if (catalog_offset_ + kLibraryPage < catalog_total_) {
+            catalog_offset_ += kLibraryPage;
+            state_.selection = static_cast<int>(state_.local.size());
+            library_dirty_ = true;
+          } else {
+            state_.selection = std::max(0, limit - 1);
+            dirty_ = true;
+          }
+        } else {
+          state_.selection = target;
+          dirty_ = true;
         }
         break;
       }
@@ -1026,7 +1445,7 @@ void App::handle_key(const platform::KeyEvent& event) {
           state_.selection + 1 >= static_cast<int>(state_.local.size() + state_.catalog.size()) &&
           catalog_offset_ + kLibraryPage < catalog_total_) {
         catalog_offset_ += kLibraryPage;
-        state_.selection = 0;
+        state_.selection = static_cast<int>(state_.local.size());
         library_dirty_ = true;
       }
       break;
@@ -1034,8 +1453,7 @@ void App::handle_key(const platform::KeyEvent& event) {
     case 0x28: {  // Enter
       if (state_.pane == ui::Pane::Devices) {
         if (state_.selection < static_cast<int>(state_.midi.size())) {
-          const auto& port = state_.midi[static_cast<std::size_t>(state_.selection)];
-          router_.set_clock(port.slot, !router_.clock_enabled(port.slot));
+          open_packages(state_.midi[static_cast<std::size_t>(state_.selection)].slot);
         } else if (state_.selection >= static_cast<int>(state_.midi.size())) {
           open_msc_actions(state_.msc[static_cast<std::size_t>(
                                          state_.selection - state_.midi.size())]
@@ -1070,139 +1488,11 @@ void App::handle_key(const platform::KeyEvent& event) {
       }
       break;
     }
-    case 0x4C:  // Delete: clear routes
-      if (state_.pane == ui::Pane::Routes) {
-        router_.clear();
-        set_message("Routes cleared");
-      }
-      break;
     default:
       break;
   }
 
-  switch (event.character) {
-    case ' ':
-      if (state_.pane == ui::Pane::Clock) {
-        toggle_clock();
-      } else if (state_.pane == ui::Pane::Devices &&
-                 state_.selection < static_cast<int>(state_.midi.size())) {
-        const auto slot = state_.midi[static_cast<std::size_t>(state_.selection)].slot;
-        router_.set_clock(slot, !router_.clock_enabled(slot));
-      }
-      break;
-    case '+':
-      if (state_.pane == ui::Pane::Clock) set_bpm(5);
-      break;
-    case '-':
-      if (state_.pane == ui::Pane::Clock) set_bpm(-5);
-      break;
-    case 't':
-    case 'T':
-      if (state_.pane == ui::Pane::Clock) {
-        router_.set_clock_all(!router_.any_clock());
-      } else if (state_.pane == ui::Pane::Library) {
-        if (!library_filter_.device) library_filter_.device = catalog::Device::Fm1;
-        else if (*library_filter_.device == catalog::Device::Fm1)
-          library_filter_.device = catalog::Device::Smk37;
-        else library_filter_.device.reset();
-        library_filter_.variant = catalog::SmkVariant::All;
-        catalog_offset_ = 0;
-        state_.selection = 0;
-        library_dirty_ = true;
-      }
-      break;
-    case 'c':
-    case 'C':
-      if (state_.pane == ui::Pane::Library) {
-        if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
-          library_filter_.variant =
-              library_filter_.variant == catalog::SmkVariant::All
-                  ? catalog::SmkVariant::Pro
-                  : library_filter_.variant == catalog::SmkVariant::Pro
-                        ? catalog::SmkVariant::Elite
-                        : library_filter_.variant == catalog::SmkVariant::Elite
-                              ? catalog::SmkVariant::Mke
-                              : catalog::SmkVariant::All;
-        } else {
-          library_filter_.chip = library_filter_.chip == platform::ChipFilter::All
-                                     ? platform::ChipFilter::New
-                                     : library_filter_.chip == platform::ChipFilter::New
-                                           ? platform::ChipFilter::Old
-                                           : platform::ChipFilter::All;
-        }
-        catalog_offset_ = 0;
-        state_.selection = 0;
-        library_dirty_ = true;
-      }
-      break;
-    case '/':
-      if (state_.pane == ui::Pane::Library) state_.editing_filter = true;
-      break;
-    case 'r':
-    case 'R':
-      if (state_.pane == ui::Pane::Library) {
-        queue_net({.command = NetCommand::Refresh, .entry = {}, .destination = {}, .ssid = {}, .password = {}, .name = {}});
-        set_message(net_.wifi_connected() ? "Refreshing catalog..."
-                                          : "Wi-Fi: connecting...", false, 30'000);
-      }
-      break;
-    case 'd':
-    case 'D':
-      if (state_.pane == ui::Pane::Devices &&
-          state_.selection < static_cast<int>(state_.midi.size())) {
-        start_flash(platform::FlashKind::DownloadMode,
-                    state_.midi[static_cast<std::size_t>(state_.selection)].slot, {});
-      }
-      break;
-    case 'l':
-    case 'L':
-      if (state_.pane == ui::Pane::Library) {
-        queue_net({.command = NetCommand::LoadLocalCatalog,
-                   .entry = {},
-                   .destination = {},
-                   .ssid = {},
-                   .password = {},
-                   .name = {}});
-        set_message("Loading local catalog manifest...", false, 10'000);
-      }
-      break;
-    case 'h':
-    case 'H':
-      if (state_.pane == ui::Pane::Library) {
-        popup_ = {};
-        popup_.kind = PopupKind::HoardConfirm;
-        popup_.title = "HOARD ALL FIRMWARE?";
-        popup_.items = {"YES - download all", "NO - cancel"};
-        popup_.selection = 0;
-        dirty_ = true;
-      }
-      break;
-    case 'f':
-    case 'F':
-      if (state_.pane == ui::Pane::Devices &&
-          state_.selection < static_cast<int>(state_.midi.size())) {
-        open_packages(state_.midi[static_cast<std::size_t>(state_.selection)].slot);
-      }
-      break;
-    case 'w':
-    case 'W':
-      if (state_.pane == ui::Pane::System) open_wifi_dialog();
-      break;
-    case 'n':
-    case 'N':
-      if (state_.pane == ui::Pane::System) open_name_dialog();
-      break;
-    case 'm':
-    case 'M':
-      if (state_.pane == ui::Pane::Devices &&
-          state_.selection < static_cast<int>(state_.midi.size())) {
-        start_flash(platform::FlashKind::DownloadMode,
-                    state_.midi[static_cast<std::size_t>(state_.selection)].slot, {});
-      }
-      break;
-    default:
-      break;
-  }
+
   dirty_ = true;
 }
 

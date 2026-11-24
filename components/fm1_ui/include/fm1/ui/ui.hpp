@@ -15,7 +15,7 @@
 
 namespace fm1::ui {
 
-enum class Pane : uint8_t { Devices, Routes, Clock, Library, System };
+enum class Pane : uint8_t { Library, Devices, System, Routes, Clock };
 
 struct UiState {
   Pane pane = Pane::Devices;
@@ -30,6 +30,7 @@ struct UiState {
   uint32_t beat_phase = 0;
   std::vector<catalog::Entry> catalog;
   std::vector<platform::LocalPackage> local;
+  std::vector<bool> catalog_installed;
   std::size_t catalog_total = 0;
   std::size_t local_total = 0;
   std::string device_filter = "ALL";
@@ -47,6 +48,7 @@ struct UiState {
   std::string device_name;
   int rssi = -127;
   int battery = -1;
+  bool battery_charging = false;
   std::string message;
   bool message_error = false;
   std::string detail;
@@ -59,6 +61,7 @@ struct UiState {
   std::string hoard_current;
   int hoard_percent = 0;
   std::string popup_title;
+  std::string popup_hint;
   std::vector<std::string> popup_items;
   int popup_selection = 0;
 };
@@ -70,8 +73,6 @@ class Ui {
 
  private:
   void header(const UiState& state);
-  void button(int x, int y, int w, int h, std::string_view label, bool active);
-  void tabs(const UiState& state);
   void devices(const UiState& state, int first_row, int rows);
   void routes(const UiState& state, int first_row, int rows);
   void clock(const UiState& state, int first_row, int rows);

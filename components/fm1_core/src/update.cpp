@@ -42,7 +42,10 @@ Result<ServeResult> serve(package::LogicalImage& image, const ReadFn& read, cons
     }
     if (request->length > midi::kMaxData ||
         static_cast<uint64_t>(request->address) + request->length > image.size()) {
-      return fail("the device requested a range outside the firmware image");
+      return fail("the device requested " + std::to_string(request->address) + "+" +
+                  std::to_string(request->length) + " outside image " +
+                  std::to_string(image.size()) + " (" +
+                  std::to_string(static_cast<unsigned>(request->flag)) + ")");
     }
 
     if (options.pacing.count() > 0) {

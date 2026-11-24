@@ -32,6 +32,7 @@ struct FlashStatus {
   bool running = false;
   bool error = false;
   std::string step;
+  std::string package;
   int percent = 0;
   std::vector<std::string> log;
 };

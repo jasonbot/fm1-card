@@ -901,6 +901,7 @@ Result<void> Net::fetch(const std::string& url, const ProgressFn& progress,
     return fail(wifi_configured() ? "Wi-Fi is still connecting; try again in a moment"
                                  : "Wi-Fi is not configured");
   }
+  constexpr int kMaxRedirects = 4;
   esp_http_client_config_t config{};
   config.url = url.c_str();
   config.crt_bundle_attach = esp_crt_bundle_attach;
@@ -908,25 +909,41 @@ Result<void> Net::fetch(const std::string& url, const ProgressFn& progress,
   config.buffer_size = 4096;
   config.buffer_size_tx = 1024;
   config.keep_alive_enable = false;
+  config.disable_auto_redirect = true;
   auto* client = esp_http_client_init(&config);
   if (client == nullptr) return fail("HTTP client init failed");
   esp_http_client_set_header(client, "User-Agent", "fm1-card/0.1");
-  esp_err_t err = esp_http_client_open(client, 0);
-  if (err != ESP_OK) {
-    esp_http_client_cleanup(client);
-    return fail("HTTP open failed");
+  int64_t length = 0;
+  for (int redirects = 0;;) {
+    const esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+      esp_http_client_cleanup(client);
+      return fail("HTTP open failed: " + url);
+    }
+    if (esp_http_client_fetch_headers(client) < 0) {
+      esp_http_client_cleanup(client);
+      return fail("HTTP headers failed: " + url);
+    }
+    const int code = esp_http_client_get_status_code(client);
+    if (code >= 300 && code < 400) {
+      if (redirects++ >= kMaxRedirects) {
+        esp_http_client_cleanup(client);
+        return fail("too many HTTP redirects");
+      }
+      if (esp_http_client_set_redirection(client) != ESP_OK) {
+        esp_http_client_cleanup(client);
+        return fail("HTTP " + std::to_string(code) + " without Location");
+      }
+      esp_http_client_close(client);
+      continue;
+    }
+    if (code < 200 || code >= 300) {
+      esp_http_client_cleanup(client);
+      return fail("HTTP status " + std::to_string(code) + " for " + url);
+    }
+    length = esp_http_client_get_content_length(client);
+    break;
   }
-  const int status = esp_http_client_fetch_headers(client);
-  if (status < 0) {
-    esp_http_client_cleanup(client);
-    return fail("HTTP headers failed");
-  }
-  if (esp_http_client_get_status_code(client) < 200 ||
-      esp_http_client_get_status_code(client) >= 300) {
-    esp_http_client_cleanup(client);
-    return fail("HTTP status " + std::to_string(esp_http_client_get_status_code(client)));
-  }
-  const int64_t length = esp_http_client_get_content_length(client);
   std::array<char, 4096> buffer{};
   std::size_t received = 0;
   bool keep_going = true;

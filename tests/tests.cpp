@@ -145,6 +145,8 @@ void test_package() {
   MemoryReader reader{fwsc};
   const auto file_layout = fm1::package::inspect(reader);
   CHECK(file_layout.has_value());
+  CHECK_EQ(file_layout->file_size, fwsc.size());
+  CHECK_EQ(file_layout->logical_size(), image.size());
   fm1::package::LogicalImage logical(reader, *file_layout);
   std::vector<uint8_t> got(image.size());
   const auto result = logical.read(0, got);
@@ -155,6 +157,14 @@ void test_package() {
   std::array<uint8_t, 100> part{};
   CHECK(logical.read(40, part).has_value());
   CHECK(std::equal(part.begin(), part.end(), image.begin() + 40));
+
+  auto large = fwsc;
+  large.resize(5000, 0xAA);
+  MemoryReader large_reader{large};
+  const auto large_layout = fm1::package::inspect(large_reader);
+  CHECK(large_layout.has_value());
+  CHECK_EQ(large_layout->file_size, large.size());
+  CHECK_EQ(large_layout->logical_size(), large.size() - large_layout->blocks);
 
   const auto smk = make_package(36, "SMK-37 Pro_016");
   const auto smk_layout = fm1::package::inspect(smk);

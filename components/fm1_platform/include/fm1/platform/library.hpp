@@ -52,6 +52,10 @@ class Library {
   // Inspects at most `limit` files; `total` receives the full count.
   Result<std::vector<LocalPackage>> local_packages(std::size_t limit = 64,
                                                    std::size_t* total = nullptr);
+  // Sorted window of local packages; only `[offset, offset+limit)` is inspected.
+  Result<std::vector<LocalPackage>> local_packages_page(
+      std::size_t offset, std::size_t limit, std::size_t* total = nullptr,
+      std::string_view text = {});
   Result<std::size_t> local_count();
   Result<std::string> package_path(std::string_view id, std::string_view version);
 

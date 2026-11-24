@@ -160,6 +160,7 @@ bool FlashWorker::submit(FlashJob job) {
     status_.running = true;
     status_.error = false;
     status_.step = "queued";
+    status_.package = job.package_path;
     status_.percent = 0;
     status_.log.clear();
   }
@@ -280,7 +281,9 @@ Result<void> FlashWorker::normal(const FlashJob& job) {
        .pacing = std::chrono::milliseconds(10)});
   usb_->claim(job.slot, false);
   usb_->mute(job.slot, false);
-  if (!stage) return std::unexpected(stage.error());
+  if (!stage) {
+    return fail(stage.error().message + " (power-cycle the unit and retry)");
+  }
   if (stage->finish != fm1::midi::kFinishStage) {
     return fail("the device stopped after " + std::to_string(stage->requests) +
                 " requests; nothing was written");
@@ -315,7 +318,9 @@ Result<void> FlashWorker::normal(const FlashJob& job) {
       {.finish_addresses = write_finish,
        .idle_timeout = std::chrono::seconds(180),
        .pacing = std::chrono::milliseconds(10)});
-  if (!write) return std::unexpected(write.error());
+  if (!write) {
+    return fail(write.error().message + " (power-cycle the unit and retry)");
+  }
   if (write->finish != fm1::midi::kFinishWrite) {
     return fail("the update loader stopped after " + std::to_string(write->requests) +
                 " requests; replug and press Flash again");

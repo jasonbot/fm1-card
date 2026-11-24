@@ -22,7 +22,7 @@ Canvas::Canvas() {
   palette_[12] = 0xEF7D;  // 12 off-white
   palette_[13] = 0xB5B6;  // 13 mid gray
   palette_[14] = 0x39E7;  // 14 dark gray
-  palette_[15] = 0x0000;  // 15 black
+  palette_[15] = 0x87F0;  // 15 light green
 }
 
 void Canvas::clear(uint8_t color) {

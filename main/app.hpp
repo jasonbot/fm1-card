@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <optional>
+#include <unordered_map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -41,12 +43,13 @@ class App {
     std::string name;
   };
 
-  enum class PopupKind { None, Packages, Sinks, MscActions, HoardConfirm, WifiNetworks, WifiPassword, DeviceName };
+  enum class PopupKind { None, Packages, Sinks, MscActions, HoardConfirm, WifiNetworks, WifiPassword, DeviceName, FlashTargets };
   struct Popup {
     PopupKind kind = PopupKind::None;
     std::string title;
     std::vector<std::string> items;
     std::vector<int> values;
+    std::vector<std::string> paths;
     int selection = 0;
     int context = 0;
   };
@@ -56,13 +59,20 @@ class App {
   void open_wifi_dialog();
   void open_name_dialog();
   void sync_ui();
-  void refresh_library(bool keep_shift = false);
+  void refresh_library(bool keep_shift = false, bool show_waiting = true,
+                       bool reload_local = true);
   void set_message(std::string message, bool error = false, uint32_t ttl_ms = 6000);
+  void show_waiting(std::string_view text);
+  void run_menu_action(int index);
   void boot_stage(std::string_view stage, bool error = false);
   void cycle_pane(int delta);
   void toggle_clock();
   void set_bpm(int delta);
   void open_packages(int slot);
+  void open_flash_targets(int local_index);
+  void load_package_page(std::size_t offset);
+  void build_package_popup();
+  void load_package_metadata();
   void open_sinks(int source);
   void open_msc_actions(int slot);
   void run_popup_action();
@@ -110,6 +120,15 @@ class App {
   std::size_t catalog_offset_ = 0;
   std::size_t catalog_total_ = 0;
   platform::LibraryFilter library_filter_;
+  struct PackageMeta {
+    std::string name;
+    bool new_chip = false;
+    bool old_chip = false;
+  };
+  std::vector<platform::LocalPackage> package_choices_;
+  std::vector<PackageMeta> package_meta_;
+  std::size_t package_offset_ = 0;
+  std::size_t package_total_ = 0;
 
   std::mutex wifi_scan_lock_;
   std::vector<platform::WifiNetwork> wifi_networks_;
@@ -119,6 +138,11 @@ class App {
   std::string wifi_password_;
   std::string device_name_ = "Cardputer";
   std::string name_edit_;
+  int last_battery_mv_ = -1;
+  uint64_t last_battery_check_us_ = 0;
+  bool battery_charging_ = false;
+  bool filter_refresh_ = false;
+  std::string last_key_;
 
 };
 

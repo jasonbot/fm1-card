@@ -32,9 +32,9 @@ instead of asking a desktop to do it.
   live on the card. Wi-Fi is optional and can be configured on-device.
 
 The UI is a 240×135 text console driven by the 56-key keyboard. No touch, no
-LVGL, no PSRAM. Five tabs: **DEV** (USB devices), **ROUTE** (MIDI graph),
-**CLOCK**, **LIB** (catalog/SD packages) and **SYS** (SD, Wi-Fi, IP, signal,
-battery, on-device Wi-Fi setup).
+LVGL, no PSRAM. Five tabs: **LIB** (catalog/SD packages), **DEV** (USB devices), **SYS** (SD, Wi-Fi, IP, signal, battery, on-device Wi-Fi setup),
+**ROUTE** (MIDI graph) and **CLOCK**. Clock and routing are last because they
+are configured least often.
 
 ## Status
 
@@ -181,33 +181,32 @@ FM1_WIFI_SSID='your-ssid' FM1_WIFI_PASSWORD='your-password' \
 
 ## Keys
 
-The footer always shows the keys that work on the current screen.
+The footer always shows the numbered actions for the current screen. Press the
+number to run it. There are no mnemonic shortcuts.
 
-- **Devices**: `↑`/`↓` select, `Space` toggles the clock target, `F` opens the
-  local package picker, `M`/`D` sends `DOWNLOAD MODE`, `Enter` on a ROM disk
-  opens Backup / Install-rescue-bootloader.
-- **Routes**: `Enter` on a source opens the sink picker; `Enter` toggles a
-  link, `Esc` closes. `Delete` clears all links.
-- **Clock**: `Space` starts/stops, `+`/`-` change BPM, `T` toggles all
-  targets, `Enter` toggles one target.
-- **System**: shows device name, SD, Wi-Fi, SSID, IP, signal and battery.
-  `N` edits the device name (default `Cardputer`, 32 chars, edges trimmed);
-  `W` opens the Wi-Fi scanner/password dialog (`R` rescans, `Esc` cancels,
-  `Enter` selects).
-- **Library**: `R` refreshes the catalog from the configured URL (Wi-Fi),
-  `L` reloads `fm1-card/firmwares.json` (or `firmwares.json`), `/` edits the text filter,
-  `T` cycles the device filter (ALL / FM-1 / SMK-37), `C` cycles the chip
-  filter (ALL / new / old) on FM-1 and the variant filter (ALL / Pro /
-  Elite / MKE-P37) on SMK-37, `Enter` downloads the selected catalog entry.
-  Untagged SMK entries count as Pro; untagged chip entries count as old.
-  `H` opens a confirmed “HOARD ALL FIRMWARE?” job that refreshes the catalog
-  and downloads every entry, overwriting matching files; a full-screen
-  progress modal shows entry and current-file progress.
-  Flash from the Devices pane: select a unit, press `F`, pick the package.
+- **Devices**: `↑`/`↓` select; `1 CLOCK` toggles the clock target,
+  `2 FLASH` opens the local package picker, `3 DOWN` sends download mode.
+  On a ROM disk, `1 ROM` opens Backup / Install-rescue-bootloader. `Enter` on
+  a live MIDI device opens the flash picker.
+- **Library**: `1 RELOAD` refreshes the catalog (Wi-Fi), `2 LOCAL` reloads
+  `fm1-card/firmwares.json`, `3 DEVICE` and `4 CHIP` cycle filters,
+  `5 HOARD` downloads everything, `6 FILTER` edits the text filter, and
+  `7 FLASH` sends the selected installed package to a connected device.
+  `Enter` downloads the selected catalog entry. Search is non-interactive:
+  type while the search bar is focused, then press Enter to apply and return
+  to the list (Esc clears it).
+- **System**: `1 WI-FI` opens the Wi-Fi scanner/password dialog, `2 NAME`
+  edits the device name (default `Cardputer`, 32 chars, edges trimmed).
+- **Routes**: `1 ROUTE` opens the sink picker; `2 CLEAR` clears all links.
+- **Clock**: `1 RUN` starts/stops, `2 ALL` toggles all targets,
+  `3 -BPM` / `4 +BPM` adjust tempo, `5 TARGET` toggles the selected device.
+- **Flash**: in the picker, `↑`/`↓` move one row; `Ctrl`+`↑`/`↓` skip five
+  rows; `Enter` flashes; `Esc` goes back. The picker loads 32 local packages
+  per window and shows its page in the title. Local packages must be on the
+  card first: select a catalog entry in LIB and press Enter to download it.
 - The Cardputer has no dedicated arrow keys: `Fn`+`;` / `Fn`+`.` scroll up
-  and down, `Fn`+`,` / `Fn`+`/` move left and right. In the Library, `Ctrl`+
-  Up/Down pages by five entries.
-- `F1`…`F5` jump to a pane; `Tab` cycles; `Fn`+`↑`/`↓` pages the library.
+  and down, `Fn`+`,` / `Fn`+`/` move left and right.
+- `Tab` cycles tabs forward; `Ctrl`+`Tab` cycles backward.
 
 ## Layout
 

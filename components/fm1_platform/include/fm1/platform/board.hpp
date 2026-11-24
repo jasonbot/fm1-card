@@ -92,6 +92,8 @@ class Battery {
   Result<void> init();
   // Percent, or -1 when unknown.
   [[nodiscard]] int percent() const;
+  // Battery voltage in millivolts, or -1 when unknown.
+  [[nodiscard]] int millivolts() const;
 
  private:
   void* adc_ = nullptr;

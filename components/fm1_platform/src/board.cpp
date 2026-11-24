@@ -510,7 +510,7 @@ Result<void> Battery::init() {
   return {};
 }
 
-int Battery::percent() const {
+int Battery::millivolts() const {
   if (!ready_) return -1;
   int raw = 0;
   if (adc_oneshot_read(static_cast<adc_oneshot_unit_handle_t>(adc_), ADC_CHANNEL_9, &raw) !=
@@ -518,8 +518,13 @@ int Battery::percent() const {
     return -1;
   }
   // The Cardputer divides the cell voltage by 2 into the ADC.
-  const float voltage = (static_cast<float>(raw) / 4095.0f) * 3.3f * 2.0f;
-  const float pct = (voltage - 3.3f) / (4.2f - 3.3f) * 100.0f;
+  return static_cast<int>((static_cast<float>(raw) / 4095.0f) * 3.3f * 2.0f * 1000.0f);
+}
+
+int Battery::percent() const {
+  const int mv = millivolts();
+  if (mv < 0) return -1;
+  const float pct = (static_cast<float>(mv) / 1000.0f - 3.3f) / (4.2f - 3.3f) * 100.0f;
   if (pct < 0.0f) return 0;
   if (pct > 100.0f) return 100;
   return static_cast<int>(pct);

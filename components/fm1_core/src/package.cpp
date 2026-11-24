@@ -48,7 +48,10 @@ Result<Layout> inspect(Reader& reader) {
   if (!read) {
     return std::unexpected(read.error());
   }
-  return inspect(std::span<const uint8_t>(head.data(), want));
+  auto layout = inspect(std::span<const uint8_t>(head.data(), want));
+  if (!layout) return layout;
+  layout->file_size = size;
+  return layout;
 }
 
 std::vector<uint8_t> logical_image(std::span<const uint8_t> fwsc) {
