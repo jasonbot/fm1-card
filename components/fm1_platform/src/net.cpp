@@ -641,8 +641,15 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
     }
     metadata.product = layout->product;
     const bool useful = has_posted || matched.has_value();
-    (void)write_local_metadata(final_path, "local:" + name, digest, written,
-                               useful ? &metadata : nullptr);
+    if (auto saved = write_local_metadata(final_path, "local:" + name, digest, written,
+                                          useful ? &metadata : nullptr);
+        !saved) {
+      log("upload metadata failed\n");
+      set_cors(request);
+      httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
+                          saved.error().message.c_str());
+      return ESP_FAIL;
+    }
   }
   log("upload saved\n");
   note_library_change();
@@ -1159,8 +1166,10 @@ Result<void> Net::download(const catalog::Entry& entry, const std::string& desti
     std::remove(temp_path.c_str());
     return fail("cannot save " + destination);
   }
-  (void)write_local_metadata(destination, catalog::package_url(entry), actual, written,
-                             &entry);
+  if (auto saved = write_local_metadata(destination, catalog::package_url(entry), actual,
+                                        written, &entry); !saved) {
+    return fail("saved package, but metadata write failed: " + saved.error().message);
+  }
   return {};
 }
 
