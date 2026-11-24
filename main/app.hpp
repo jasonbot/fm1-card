@@ -79,6 +79,8 @@ class App {
   void set_bpm(int delta);
   void open_packages(int slot);
   void open_flash_targets(int local_index);
+  std::vector<int> compatible_targets(const platform::LocalPackage& package,
+                                      bool include_unidentified) const;
   void load_package_page(std::size_t offset);
   void build_package_popup();
   void load_package_metadata();

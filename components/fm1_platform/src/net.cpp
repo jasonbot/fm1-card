@@ -133,19 +133,6 @@ std::string json_escape(std::string_view text) {
   return out;
 }
 
-std::string read_meta_sha(const std::string& path) {
-  std::FILE* file = std::fopen((path + ".meta").c_str(), "rb");
-  if (file == nullptr) return {};
-  char url[512]{};
-  char sha[128]{};
-  const bool ok = std::fgets(url, sizeof(url), file) != nullptr &&
-                  std::fgets(sha, sizeof(sha), file) != nullptr;
-  std::fclose(file);
-  if (!ok) return {};
-  sha[std::strcspn(sha, "\r\n")] = '\0';
-  return std::strlen(sha) == 64 ? std::string(sha) : std::string{};
-}
-
 std::string url_decode(std::string_view text) {
   std::string out;
   out.reserve(text.size());
@@ -461,13 +448,12 @@ esp_err_t Net::list_firmwares(httpd_req_t* request) {
       first = false;
       record += "{\"name\":\"" + json_escape(name) + "\",\"dir\":\"" + json_escape(dir) + "\"";
       if (detail) {
-        const std::string sha = read_meta_sha(path);
         const auto meta = read_local_metadata(path);
         record += ",\"size\":" + std::to_string(info.st_size) + ",\"sha256\":";
-        if (sha.empty())
+        if (meta.sha256.empty())
           record += "null";
         else
-          record += "\"" + sha + "\"";
+          record += "\"" + meta.sha256 + "\"";
         record += ",\"title\":\"" + json_escape(meta.name) + "\",\"author\":\"" +
                   json_escape(meta.author) + "\",\"version\":\"" + json_escape(meta.version) +
                   "\",\"description\":\"" + json_escape(meta.what) + "\",\"tags\":\"" +

@@ -939,23 +939,34 @@ void App::build_package_popup() {
       std::clamp(popup_.selection, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
 }
 
+std::vector<int> App::compatible_targets(const platform::LocalPackage& package,
+                                         bool include_unidentified) const {
+  std::vector<int> targets;
+  for (std::size_t i = 0; i < state_.midi.size(); ++i) {
+    const auto& port = state_.midi[i];
+    if (port.identity.empty()) {
+      if (include_unidentified) targets.push_back(static_cast<int>(i));
+    } else if (identity::package_fits(port.identity, package.product)) {
+      targets.push_back(static_cast<int>(i));
+    }
+  }
+  return targets;
+}
+
 void App::open_flash_targets(int local_index) {
   if (local_index < 0 || local_index >= static_cast<int>(state_.local.size())) {
     set_message("Select an installed firmware first", true);
     return;
   }
   const auto& package = state_.local[static_cast<std::size_t>(local_index)];
+  const auto targets = compatible_targets(package, true);
   popup_ = {};
   popup_.kind = PopupKind::FlashTargets;
   popup_.title = "FLASH " + package.name;
   popup_.paths = {package.path};
-  for (std::size_t i = 0; i < state_.midi.size(); ++i) {
-    const auto& port = state_.midi[i];
-    if (!port.identity.empty() && !identity::package_fits(port.identity, package.product)) {
-      continue;
-    }
-    popup_.items.push_back(label_of(port));
-    popup_.values.push_back(static_cast<int>(i));
+  for (const int i : targets) {
+    popup_.items.push_back(label_of(state_.midi[static_cast<std::size_t>(i)]));
+    popup_.values.push_back(i);
   }
   if (popup_.items.empty()) {
     popup_ = {};
@@ -1536,20 +1547,13 @@ void App::handle_key(const platform::KeyEvent& event) {
       } else if (state_.pane == ui::Pane::Library) {
         if (state_.selection < static_cast<int>(state_.local.size())) {
           const auto& package = state_.local[static_cast<std::size_t>(state_.selection)];
-          int compatible = -1;
-          int count = 0;
-          for (std::size_t i = 0; i < state_.midi.size(); ++i) {
-            const auto& port = state_.midi[i];
-            if (!port.identity.empty() && identity::package_fits(port.identity, package.product)) {
-              compatible = static_cast<int>(i);
-              ++count;
-            }
-          }
-          if (count == 1) {
-            const auto& port = state_.midi[static_cast<std::size_t>(compatible)];
+          const auto targets = compatible_targets(package, false);
+          if (targets.size() == 1) {
+            const int target = targets.front();
             state_.pane = ui::Pane::Devices;
-            state_.selection = compatible;
-            start_flash(platform::FlashKind::Normal, port.slot, package.path);
+            state_.selection = target;
+            start_flash(platform::FlashKind::Normal,
+                        state_.midi[static_cast<std::size_t>(target)].slot, package.path);
           } else {
             open_flash_targets(state_.selection);
           }
