@@ -210,6 +210,19 @@ void App::ui_loop() {
   for (;;) {
     while (auto event = keyboard_.poll()) handle_key(*event);
 
+    if (net_.catalog_busy()) {
+      if (!catalog_waiting_) {
+        catalog_waiting_ = true;
+        show_waiting("UPLOADING FIRMWARE CATALOG");
+      }
+      vTaskDelay(pdMS_TO_TICKS(30));
+      continue;
+    }
+    if (catalog_waiting_) {
+      catalog_waiting_ = false;
+      dirty_ = true;
+    }
+
     if (net_.take_library_change()) {
       library_dirty_ = true;
       installed_metadata_valid_ = false;

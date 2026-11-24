@@ -45,6 +45,9 @@ class Net {
   [[nodiscard]] bool take_library_change() {
     return library_changed_.exchange(false);
   }
+  [[nodiscard]] bool catalog_busy() const {
+    return catalog_busy_.load();
+  }
   esp_err_t list_firmwares(httpd_req_t* request);
   esp_err_t upload_firmware(httpd_req_t* request);
   esp_err_t firmware_info(httpd_req_t* request);
@@ -116,6 +119,7 @@ class Net {
   std::function<std::string()> status_provider_;
   std::atomic<bool> configured_{false};
   std::atomic<bool> library_changed_{false};
+  std::atomic<bool> catalog_busy_{false};
   bool started_ = false;
   bool driver_ready_ = false;
   std::atomic<bool> reconfiguring_{false};

@@ -700,6 +700,13 @@ esp_err_t Net::upload_catalog(httpd_req_t* request) {
     return ESP_FAIL;
   }
   (void)storage_->ensure_dir("fm1-card");
+  struct BusyGuard {
+    std::atomic<bool>& flag;
+    ~BusyGuard() {
+      flag.store(false);
+    }
+  } busy{catalog_busy_};
+  catalog_busy_.store(true);
   const std::string temp_rel = "fm1-card/firmwares.json.upload";
   const std::string temp_path = storage_->path(temp_rel);
   const std::string final_path = storage_->path(Library::manifest_path());

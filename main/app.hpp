@@ -156,6 +156,7 @@ class App {
   bool battery_charging_ = false;
   uint64_t charge_seen_us_ = 0;
   bool filter_refresh_ = false;
+  bool catalog_waiting_ = false;
 };
 
 }  // namespace fm1
