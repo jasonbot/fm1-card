@@ -176,7 +176,9 @@ void Ui::header(const UiState& state) {
   draw_tab_glyph(canvas_, 47, 4, kRouteTab, 12, pane == 3);
   draw_tab_glyph(canvas_, 60, 4, kClockTab, 9, pane == 4);
 
-  draw_right_text(canvas_, 71, 102, 2, std::to_string(state.bpm), state.clock_running ? 4 : 15);
+  uint8_t bpm_color = state.clock_running ? 15 : 4;
+  if (state.clock_running && state.beat_phase < 6) bpm_color = 11;
+  draw_right_text(canvas_, 71, 102, 2, std::to_string(state.bpm), bpm_color);
 
   std::string network = state.ssid;
   uint8_t network_color = 2;
