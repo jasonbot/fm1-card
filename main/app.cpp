@@ -136,8 +136,13 @@ void App::run() {
     (void)storage_.write_text("fm1-card/logs/boot.log", boot);
   }
   if (storage_.mounted()) {
+    const bool had_config = storage_.read_text("fm1-card/config.json").has_value();
     if (auto config = platform::load_config(storage_); config) {
       device_name_ = config->device_name;
+      if (!had_config) {
+        state_.pane = ui::Pane::System;
+        set_message("Welcome: press W in SYS to set up Wi-Fi", false, 15'000);
+      }
     }
   }
   queue_net({.command = NetCommand::Start,
