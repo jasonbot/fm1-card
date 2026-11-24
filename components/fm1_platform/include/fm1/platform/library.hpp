@@ -18,15 +18,32 @@
 
 namespace fm1::platform {
 
+struct LocalMetadata {
+  std::string id;
+  std::string name;
+  std::string version;
+  std::string author;
+  std::string what;
+  std::string tags;
+  bool present = false;
+};
+
 struct LocalPackage {
   std::string path;
-  std::string name;     // filename stem, human-readable fallback
+  std::string name;     // friendly catalog name, or filename stem
   std::string product;
   catalog::Device device = catalog::Device::Fm1;
   catalog::SmkVariant variant = catalog::SmkVariant::All;
   uint64_t size = 0;
   uint8_t blocks = 0;
+  LocalMetadata metadata;
 };
+
+LocalMetadata read_local_metadata(const std::string& package_path);
+Result<void> write_local_metadata(const std::string& package_path, std::string_view source,
+                                  std::string_view sha256, std::size_t size,
+                                  const catalog::Entry* entry = nullptr);
+
 
 enum class ChipFilter : uint8_t { All, New, Old };
 
@@ -57,6 +74,7 @@ class Library {
       std::size_t offset, std::size_t limit, std::size_t* total = nullptr,
       std::string_view text = {});
   Result<std::size_t> local_count();
+  Result<std::vector<LocalMetadata>> local_metadata();
   Result<std::string> package_path(std::string_view id, std::string_view version);
 
   [[nodiscard]] static std::string cache_path() { return "fm1-card/catalog.bin"; }

@@ -13,6 +13,14 @@
 namespace fm1::platform {
 namespace {
 
+std::string meta_safe(std::string_view text) {
+  std::string out(text);
+  for (char& c : out) {
+    if (c == '\n' || c == '\r') c = ' ';
+  }
+  return out;
+}
+
 Result<std::optional<std::vector<uint8_t>>> read_record(std::FILE* file) {
   uint8_t length_bytes[4]{};
   const auto got = std::fread(length_bytes, 1, 4, file);
@@ -148,6 +156,27 @@ Result<std::optional<catalog::Entry>> Library::find(std::string_view id) {
   return std::optional<catalog::Entry>{};
 }
 
+Result<std::vector<LocalMetadata>> Library::local_metadata() {
+  std::vector<LocalMetadata> out;
+  if (!storage_.mounted()) return out;
+  for (const auto& dir : std::array<std::string, 2>{"fm1-card/firmwares", "firmwares"}) {
+    DIR* handle = opendir(storage_.path(dir).c_str());
+    if (handle == nullptr) continue;
+    while (dirent* item = readdir(handle)) {
+      const std::string name = item->d_name;
+      if (name.size() < 6 || name.substr(name.size() - 5) != ".fwsc") continue;
+      auto meta = read_local_metadata(storage_.path(dir + "/" + name));
+      if (meta.name.empty()) {
+        meta.name = name.substr(0, name.size() - 5);
+        for (char& c : meta.name) if (c == '_') c = ' ';
+      }
+      out.push_back(std::move(meta));
+    }
+    closedir(handle);
+  }
+  return out;
+}
+
 Result<std::vector<LocalPackage>> Library::local_packages_page(
     std::size_t offset, std::size_t limit, std::size_t* total,
     std::string_view text) {
@@ -167,8 +196,14 @@ Result<std::vector<LocalPackage>> Library::local_packages_page(
   std::sort(paths.begin(), paths.end());
   if (!text.empty()) {
     std::erase_if(paths, [&](const std::string& path) {
+      auto meta = read_local_metadata(path);
       catalog::Entry entry;
-      entry.name = path;
+      entry.name = meta.name.empty() ? path : meta.name;
+      entry.id = meta.id;
+      entry.version = meta.version;
+      entry.author = meta.author;
+      entry.what = meta.what;
+      entry.tags = meta.tags;
       return !catalog::matches(entry, text);
     });
   }
@@ -184,13 +219,16 @@ Result<std::vector<LocalPackage>> Library::local_packages_page(
     for (char& c : display) {
       if (c == '_') c = ' ';
     }
+    auto metadata = read_local_metadata(paths[i]);
+    if (!metadata.name.empty()) display = metadata.name;
     out.push_back(LocalPackage{.path = paths[i],
                                .name = std::move(display),
                                .product = layout->product,
                                .device = catalog::device_from_product(layout->product),
                                .variant = catalog::smk_variant_from_product(layout->product),
                                .size = layout->file_size,
-                               .blocks = static_cast<uint8_t>(layout->blocks)});
+                               .blocks = static_cast<uint8_t>(layout->blocks),
+                               .metadata = std::move(metadata)});
   }
   return out;
 }
@@ -214,6 +252,53 @@ Result<std::size_t> Library::local_count() {
     closedir(handle);
   }
   return found;
+}
+
+LocalMetadata read_local_metadata(const std::string& package_path) {
+  LocalMetadata meta;
+  std::FILE* file = std::fopen((package_path + ".meta").c_str(), "rb");
+  if (file == nullptr) return meta;
+  char line[1024]{};
+  // Keep the original three-line prefix: source, sha256, size.
+  for (int i = 0; i < 3 && std::fgets(line, sizeof(line), file) != nullptr; ++i) {
+  }
+  while (std::fgets(line, sizeof(line), file) != nullptr) {
+    std::string text(line);
+    const auto newline = text.find_last_not_of("\r\n");
+    if (newline == std::string::npos) continue;
+    text.resize(newline + 1);
+    const auto eq = text.find('=');
+    if (eq == std::string::npos) continue;
+    const auto key = text.substr(0, eq);
+    const auto value = text.substr(eq + 1);
+    if (key == "id") meta.id = value;
+    else if (key == "name") meta.name = value;
+    else if (key == "version") meta.version = value;
+    else if (key == "author") meta.author = value;
+    else if (key == "what") meta.what = value;
+    else if (key == "tags") meta.tags = value;
+  }
+  std::fclose(file);
+  meta.present = !meta.name.empty() || !meta.id.empty() || !meta.version.empty();
+  return meta;
+}
+
+Result<void> write_local_metadata(const std::string& package_path, std::string_view source,
+                                  std::string_view sha256, std::size_t size,
+                                  const catalog::Entry* entry) {
+  const std::string path = package_path + ".meta";
+  std::FILE* file = std::fopen(path.c_str(), "wb");
+  if (file == nullptr) return fail("cannot write " + path);
+  std::fprintf(file, "%s\n%s\n%zu\n", std::string(source).c_str(),
+               std::string(sha256).c_str(), size);
+  if (entry != nullptr) {
+    std::fprintf(file, "id=%s\nname=%s\nversion=%s\nauthor=%s\nwhat=%s\ntags=%s\n",
+                 meta_safe(entry->id).c_str(), meta_safe(entry->name).c_str(),
+                 meta_safe(entry->version).c_str(), meta_safe(entry->author).c_str(),
+                 meta_safe(entry->what).c_str(), meta_safe(entry->tags).c_str());
+  }
+  std::fclose(file);
+  return {};
 }
 
 Result<std::size_t> build_catalog_cache(Storage& storage, std::string_view json_relative) {

@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <optional>
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -158,6 +159,11 @@ std::string url_decode(std::string_view text) {
     }
   }
   return out;
+}
+
+std::string base_name(std::string_view path) {
+  const auto slash = path.find_last_of("/\\");
+  return std::string(path.substr(slash == std::string_view::npos ? 0 : slash + 1));
 }
 
 std::string sanitize_firmware_name(std::string name) {
@@ -497,6 +503,38 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
     httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "name=*.fwsc required");
     return ESP_FAIL;
   }
+  catalog::Entry posted{};
+  bool has_posted = false;
+  if (query_len > 0 && query_len < 1024) {
+    std::string query(query_len + 1, '\0');
+    if (httpd_req_get_url_query_str(request, query.data(), query.size()) == ESP_OK) {
+      char value[512]{};
+      if (httpd_query_key_value(query.c_str(), "title", value, sizeof(value)) == ESP_OK) {
+        posted.name = url_decode(value);
+        has_posted = true;
+      }
+      if (httpd_query_key_value(query.c_str(), "author", value, sizeof(value)) == ESP_OK) {
+        posted.author = url_decode(value);
+        has_posted = true;
+      }
+      if (httpd_query_key_value(query.c_str(), "version", value, sizeof(value)) == ESP_OK) {
+        posted.version = url_decode(value);
+        has_posted = true;
+      }
+      if (httpd_query_key_value(query.c_str(), "description", value, sizeof(value)) == ESP_OK) {
+        posted.what = url_decode(value);
+        has_posted = true;
+      }
+      if (httpd_query_key_value(query.c_str(), "tags", value, sizeof(value)) == ESP_OK) {
+        posted.tags = url_decode(value);
+        has_posted = true;
+      }
+      if (httpd_query_key_value(query.c_str(), "id", value, sizeof(value)) == ESP_OK) {
+        posted.id = url_decode(value);
+        has_posted = true;
+      }
+    }
+  }
   if (request->content_len == 0 || request->content_len > 8 * 1024 * 1024) {
     set_cors(request);
     httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "bad content length");
@@ -567,10 +605,35 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
   std::string digest;
   if (auto sha = sha256_file(final_path, &written); sha) {
     digest = *sha;
-    if (std::FILE* meta = std::fopen((final_path + ".meta").c_str(), "wb")) {
-      std::fprintf(meta, "local:%s\n%s\n%zu\n", name.c_str(), digest.c_str(), written);
-      std::fclose(meta);
+    std::optional<catalog::Entry> matched;
+    Library library(*storage_);
+    (void)library.for_each([&](const catalog::Entry& entry) {
+      const std::string fileName = base_name(entry.pkg);
+      auto indexPath = library.package_path(entry.id, entry.version);
+      const std::string pathName = indexPath ? base_name(*indexPath) : std::string{};
+      if ((!digest.empty() && !entry.sha256.empty() && digest == entry.sha256) ||
+          fileName == name || pathName == name) {
+        matched = entry;
+        return false;
+      }
+      return true;
+    });
+    catalog::Entry metadata = matched.value_or(catalog::Entry{});
+    if (has_posted) {
+      if (!posted.name.empty()) metadata.name = posted.name;
+      if (!posted.author.empty()) metadata.author = posted.author;
+      if (!posted.version.empty()) metadata.version = posted.version;
+      if (!posted.what.empty()) metadata.what = posted.what;
+      if (!posted.tags.empty()) metadata.tags = posted.tags;
+      if (!posted.id.empty()) metadata.id = posted.id;
     }
+    if (metadata.id.empty() && !metadata.name.empty()) {
+      metadata.id = metadata.name;
+      if (!metadata.version.empty()) metadata.id += "@" + metadata.version;
+    }
+    const bool useful = has_posted || matched.has_value();
+    (void)write_local_metadata(final_path, "local:" + name, digest, written,
+                               useful ? &metadata : nullptr);
   }
   log("upload saved\n");
   note_library_change();
@@ -1085,12 +1148,8 @@ Result<void> Net::download(const catalog::Entry& entry, const std::string& desti
     std::remove(temp_path.c_str());
     return fail("cannot save " + destination);
   }
-  const std::string meta_path = destination + ".meta";
-  if (std::FILE* meta = std::fopen(meta_path.c_str(), "wb")) {
-    std::fprintf(meta, "%s\n%s\n%zu\n", catalog::package_url(entry).c_str(),
-                 actual.c_str(), written);
-    std::fclose(meta);
-  }
+  (void)write_local_metadata(destination, catalog::package_url(entry), actual, written,
+                             &entry);
   return {};
 }
 

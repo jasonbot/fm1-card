@@ -54,7 +54,8 @@ While Wi-Fi is connected, the device answers UDP discovery on port `8135`
 - `GET /status` — device, USB-MIDI, clock and library state
 - `GET /firmwares` — installed package names; `?detail=1` adds size/SHA-256
 - `GET /firmwares/info?name=...` — size, hash, product, device/variant for one file
-- `POST /firmwares?name=<file>.fwsc` — upload/overwrite a package
+- `POST /firmwares?name=<file>.fwsc` — upload/overwrite a package; optional
+  `title`, `author`, `version`, `description`, `tags` metadata is persisted
 - `POST /catalog` — upload a JSON firmware manifest; atomically rebuilds the
   catalog cache and saves it as `fm1-card/firmwares.json`
 

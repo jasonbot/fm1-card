@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <unordered_set>
 
 #include "esp_app_desc.h"
@@ -10,6 +11,7 @@
 #include "esp_system.h"
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <sys/stat.h>
 
 #include "esp_log.h"
@@ -32,6 +34,47 @@ void blit_cb(void* context, int x, int y, int width, int height,
 
 std::string label_of(const platform::MidiPort& port) {
   return port.identity.empty() ? ("MIDI " + port.path) : port.identity;
+}
+
+std::string lower_text(std::string_view text) {
+  std::string out(text);
+  std::transform(out.begin(), out.end(), out.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return out;
+}
+
+// Compare the numeric/lexical pieces of a firmware version. True when `have`
+// is the same or newer than `wanted`.
+bool version_at_least(std::string_view have, std::string_view wanted) {
+  if (have.empty()) return false;
+  if (wanted.empty()) return true;
+  std::size_t a = 0;
+  std::size_t b = 0;
+  while (a < have.size() || b < wanted.size()) {
+    while (a < have.size() && !std::isalnum(static_cast<unsigned char>(have[a]))) ++a;
+    while (b < wanted.size() && !std::isalnum(static_cast<unsigned char>(wanted[b]))) ++b;
+    const std::size_t ae = a;
+    const std::size_t be = b;
+    while (a < have.size() && std::isalnum(static_cast<unsigned char>(have[a]))) ++a;
+    while (b < wanted.size() && std::isalnum(static_cast<unsigned char>(wanted[b]))) ++b;
+    const auto ap = have.substr(ae, a - ae);
+    const auto bp = wanted.substr(be, b - be);
+    if (ap.empty()) return !bp.empty();
+    if (bp.empty()) return true;
+    const bool an = std::all_of(ap.begin(), ap.end(),
+                                [](char c) { return std::isdigit(static_cast<unsigned char>(c)); });
+    const bool bn = std::all_of(bp.begin(), bp.end(),
+                                [](char c) { return std::isdigit(static_cast<unsigned char>(c)); });
+    if (an && bn) {
+      const auto av = std::strtoul(std::string(ap).c_str(), nullptr, 10);
+      const auto bv = std::strtoul(std::string(bp).c_str(), nullptr, 10);
+      if (av != bv) return av > bv;
+    } else {
+      const auto cmp = ap.compare(bp);
+      if (cmp != 0) return cmp > 0;
+    }
+  }
+  return true;
 }
 
 std::string json_escape(std::string_view text) {
@@ -512,6 +555,17 @@ void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
   auto entries = library_.page(library_filter_, catalog_offset_, page);
   state_.catalog = entries.value_or(std::vector<catalog::Entry>{});
   state_.catalog_total = catalog_total_;
+  const auto installed = library_.local_metadata().value_or(std::vector<platform::LocalMetadata>{});
+  std::erase_if(state_.catalog, [&](const catalog::Entry& entry) {
+    const auto entry_name = lower_text(entry.name);
+    for (const auto& local : installed) {
+      if (lower_text(local.name) != entry_name) continue;
+      if (version_at_least(local.version, entry.version)) return true;
+    }
+    return false;
+  });
+  const int max_filtered = static_cast<int>(state_.local.size() + state_.catalog.size()) - 1;
+  if (state_.selection > max_filtered) state_.selection = std::max(0, max_filtered);
   state_.catalog_installed.assign(state_.catalog.size(), false);
   for (std::size_t i = 0; i < state_.catalog.size(); ++i) {
     auto path = library_.package_path(state_.catalog[i].id, state_.catalog[i].version);

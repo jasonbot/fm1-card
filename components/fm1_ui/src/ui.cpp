@@ -434,7 +434,10 @@ void Ui::library(const UiState& state, int, int rows) {
                          local.name + "  " + local.product + "  " +
                              std::to_string(local.size / 1024) + "K",
                          1);
-    canvas_.text_clipped(0, 9, 40, local.path, 2);
+    const std::string detail = !local.metadata.author.empty()
+                                   ? local.metadata.author + "  " + local.metadata.tags
+                                   : local.path;
+    canvas_.text_clipped(0, 9, 40, detail, 2);
   }
 }
 

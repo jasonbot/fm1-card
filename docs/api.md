@@ -90,6 +90,11 @@ without `detail=1` does not include hashes.
 
 ## `POST /firmwares?name=<file>.fwsc`
 
+Optional display metadata can accompany the upload:
+`title`, `author`, `version`, `description`, `tags`. These are persisted in
+the package's `.meta` sidecar. If the file matches a catalog entry by SHA-256,
+filename, or catalog package path, the catalog metadata is used automatically.
+
 Uploads a raw `.fwsc` body. The name must end in `.fwsc`; path separators are
 rejected. The device writes a temporary file, validates the `.fwsc` identity
 layout, replaces an existing file of the same name, and creates a `.meta`
