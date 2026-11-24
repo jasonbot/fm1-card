@@ -72,7 +72,8 @@ Result<Config> load_config(Storage& storage) {
   auto text = storage.read_text(kConfigPath, 4096);
   if (!text) {
     // First boot: leave a template so the user can edit the card.
-    (void)write_config_template(storage);
+    auto written = write_config_template(storage);
+    if (!written) return fail("cannot create config.json: " + written.error().message);
     return config;
   }
   std::array<lwjson_token_t, 64> tokens{};
