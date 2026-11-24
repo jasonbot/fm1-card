@@ -379,8 +379,8 @@ Result<void> FlashWorker::normal(const FlashJob& job) {
     return fail("the device did not answer the handshake: use Rescue or check the cable");
   }
   // The update loader is already the second phase. Sending UPGRADE to it and
-  // serving both finishes writes the image directly; the normal stage-then-
-  // reboot flow would stop after the loader's first write request.
+  // serving its write-finish address writes the image directly; the normal
+  // stage-then-reboot flow would stop after the loader's first write request.
   if (port->ota) return rescue(job);
 
   FileReader reader;
@@ -400,7 +400,9 @@ Result<void> FlashWorker::normal(const FlashJob& job) {
   usb_->mute(job.slot, true);
 
   const std::string path = port->path;
-  usb_->send_sysex(job.slot, fm1::midi::kUpgrade);
+  if (!usb_->send_sysex(job.slot, fm1::midi::kUpgrade)) {
+    return fail("could not send the upgrade command");
+  }
   vTaskDelay(pdMS_TO_TICKS(2000));
   publish("staging the update loader", 0);
   const auto stage_finish = std::array<uint32_t, 1>{fm1::midi::kFinishStage};
@@ -434,7 +436,9 @@ Result<void> FlashWorker::normal(const FlashJob& job) {
   ClaimGuard loader_guard{*usb_, loader->slot};
   usb_->claim(loader->slot, true);
   usb_->mute(loader->slot, true);
-  usb_->send_sysex(loader->slot, fm1::midi::kUpgrade);
+  if (!usb_->send_sysex(loader->slot, fm1::midi::kUpgrade)) {
+    return fail("could not send the upgrade command to the loader");
+  }
   vTaskDelay(pdMS_TO_TICKS(2000));
   publish("writing the flash", 0);
   const auto write_finish = std::array<uint32_t, 1>{fm1::midi::kFinishWrite};
@@ -489,11 +493,16 @@ Result<void> FlashWorker::rescue(const FlashJob& job) {
   ClaimGuard guard{*usb_, job.slot};
   usb_->claim(job.slot, true);
   usb_->mute(job.slot, true);
-  usb_->send_sysex(job.slot, fm1::midi::kUpgrade);
+  if (!usb_->send_sysex(job.slot, fm1::midi::kUpgrade)) {
+    return fail("could not send the upgrade command");
+  }
   vTaskDelay(pdMS_TO_TICKS(2000));
   publish(port->ota ? "resuming the update loader" : "waiting for the device to pull the update",
           0);
   const auto both = std::array<uint32_t, 2>{fm1::midi::kFinishStage, fm1::midi::kFinishWrite};
+  const auto write_only = std::array<uint32_t, 1>{fm1::midi::kFinishWrite};
+  const std::span<const uint32_t> finish =
+      port->ota ? std::span<const uint32_t>(write_only) : std::span<const uint32_t>(both);
   auto served = update::serve(
       image, [&](std::chrono::milliseconds timeout) { return usb_->read_sysex(job.slot, timeout); },
       [&](std::span<const uint8_t> sysex) { return usb_->send_sysex(job.slot, sysex); },
@@ -502,12 +511,24 @@ Result<void> FlashWorker::rescue(const FlashJob& job) {
                 static_cast<int>(done * 100 / std::max<std::size_t>(total, 1)));
       },
       [](std::chrono::milliseconds ms) { std::this_thread::sleep_for(ms); },
-      {.finish_addresses = both,
+      {.finish_addresses = finish,
        .idle_timeout = std::chrono::seconds(8),
        .pacing = std::chrono::milliseconds(10)});
   if (!served) return std::unexpected(served.error());
   if (served->finish == fm1::midi::kFinishWrite) {
-    publish("flashed", 100);
+    if (port->ota) {
+      publish("written: waiting for the device", 0);
+      auto back = usb_->wait_for_midi(path, std::chrono::seconds(60), [&](const MidiPort& p) {
+        return !is_ota(p) && !p.identity.empty();
+      });
+      if (!back) return fail("the device did not come back within 60 s");
+      if (!identity::same_identity(back->identity, product)) {
+        return fail("the device came back as " + back->identity + ", not " + product);
+      }
+      publish("flashed: " + back->identity, 100);
+    } else {
+      publish("flashed", 100);
+    }
     return {};
   }
   if (served->finish != fm1::midi::kFinishStage) {
@@ -523,7 +544,9 @@ Result<void> FlashWorker::rescue(const FlashJob& job) {
   ClaimGuard loader_guard{*usb_, loader->slot};
   usb_->claim(loader->slot, true);
   usb_->mute(loader->slot, true);
-  usb_->send_sysex(loader->slot, fm1::midi::kUpgrade);
+  if (!usb_->send_sysex(loader->slot, fm1::midi::kUpgrade)) {
+    return fail("could not send the upgrade command to the loader");
+  }
   vTaskDelay(pdMS_TO_TICKS(2000));
   const auto write_finish = std::array<uint32_t, 1>{fm1::midi::kFinishWrite};
   auto write = update::serve(
