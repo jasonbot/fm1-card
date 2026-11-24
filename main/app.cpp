@@ -293,6 +293,7 @@ void App::net_loop() {
           set_message(downloaded.error().message, true);
         } else {
           set_message("Saved " + job.entry.name);
+          installed_metadata_valid_ = false;
           library_dirty_ = true;
         }
         break;
@@ -402,6 +403,7 @@ void App::net_loop() {
           hoard_.done = done;
           hoard_.failed = failed;
         }
+        installed_metadata_valid_ = false;
         library_dirty_ = true;
         if (!walked) {
           set_message("HOARD stopped: catalog read error", true, 20'000);

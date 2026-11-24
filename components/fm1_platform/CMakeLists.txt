@@ -4,6 +4,7 @@ idf_component_register(
     "src/config.cpp"
     "src/file.cpp"
     "src/library.cpp"
+    "src/local_meta.cpp"
     "src/net.cpp"
     "src/usb.cpp"
     "src/flash.cpp"

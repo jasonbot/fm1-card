@@ -32,8 +32,19 @@ add_library(fm1_ui_canvas STATIC
   ../components/fm1_ui/src/font.cpp)
 target_include_directories(fm1_ui_canvas PUBLIC ../components/fm1_ui/include)
 
+add_library(fm1_local_meta STATIC
+  ../components/fm1_platform/src/local_meta.cpp)
+target_include_directories(fm1_local_meta PUBLIC
+  ../components/fm1_platform/include
+  ../components/fm1_core/include
+  ../components/lwjson/include
+  ../components/lwjson/include/lwjson)
+
 add_executable(fm1_core_tests tests.cpp)
+add_executable(fm1_local_meta_tests test_local_meta.cpp)
+target_link_libraries(fm1_local_meta_tests PRIVATE fm1_local_meta)
 target_link_libraries(fm1_core_tests PRIVATE fm1_core fm1_ui_canvas)
 
 enable_testing()
 add_test(NAME fm1_core COMMAND fm1_core_tests WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME fm1_local_meta COMMAND fm1_local_meta_tests WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
