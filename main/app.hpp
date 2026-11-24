@@ -64,7 +64,7 @@ class App {
     int context = 0;
   };
 
-  void handle_key(const platform::KeyEvent& event);
+  void handle_key(platform::KeyEvent event);
   void handle_popup_key(const platform::KeyEvent& event);
   void open_wifi_dialog();
   void open_name_dialog();

@@ -215,8 +215,9 @@ number to run it. There are no mnemonic shortcuts.
   rows; `Enter` flashes; `Esc` goes back. The picker loads 32 local packages
   per window and shows its page in the title. Local packages must be on the
   card first: select a catalog entry in LIB and press Enter to download it.
-- The Cardputer has no dedicated arrow keys: `Fn`+`;` / `Fn`+`.` scroll up
-  and down, `Fn`+`,` / `Fn`+`/` move left and right.
+- The Cardputer has no dedicated arrow keys: bare `;` `,` `.` `/` move
+  up/left/down/right on list screens; hold `Fn` for the same keys inside text
+  fields.
 - `Tab` cycles tabs forward; `Ctrl`+`Tab` cycles backward.
 
 ## Layout

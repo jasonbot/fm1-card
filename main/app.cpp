@@ -35,6 +35,28 @@ std::string label_of(const platform::MidiPort& port) {
   return port.identity.empty() ? ("MIDI " + port.path) : port.identity;
 }
 
+bool remap_bare_arrow(platform::KeyEvent& event) {
+  if (event.code != 0 || event.shift || event.ctrl || event.alt) return false;
+  switch (event.character) {
+    case ';':
+      event.code = 0x52;
+      break;  // up
+    case ',':
+      event.code = 0x50;
+      break;  // left
+    case '.':
+      event.code = 0x51;
+      break;  // down
+    case '/':
+      event.code = 0x4F;
+      break;  // right
+    default:
+      return false;
+  }
+  event.character = 0;
+  return true;
+}
+
 std::string json_escape(std::string_view text) {
   std::string out;
   out.reserve(text.size() + 8);
@@ -1385,7 +1407,7 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
   }
 }
 
-void App::handle_key(const platform::KeyEvent& event) {
+void App::handle_key(platform::KeyEvent event) {
   if (event.kind == platform::KeyKind::Press) {
     const uint16_t hz = event.code == 0x28 ? 660 : event.code == 0x29 ? 330 : 990;
     audio_.beep(hz, 16, platform::Wave::Square);
@@ -1400,6 +1422,9 @@ void App::handle_key(const platform::KeyEvent& event) {
     }
   }
   if (popup_.kind != PopupKind::None) {
+    if (popup_.kind != PopupKind::WifiPassword && popup_.kind != PopupKind::DeviceName) {
+      (void)remap_bare_arrow(event);
+    }
     handle_popup_key(event);
     return;
   }
@@ -1430,6 +1455,8 @@ void App::handle_key(const platform::KeyEvent& event) {
     dirty_ = true;
     return;
   }
+
+  (void)remap_bare_arrow(event);
 
   if (event.character >= '1' && event.character <= '9') {
     run_menu_action(event.character - '1');
