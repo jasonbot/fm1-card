@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -52,6 +53,7 @@ class Net {
   esp_err_t upload_firmware(httpd_req_t* request);
   esp_err_t firmware_info(httpd_req_t* request);
   esp_err_t upload_catalog(httpd_req_t* request);
+  esp_err_t set_theme(httpd_req_t* request);
   esp_err_t catalog_info(httpd_req_t* request);
   [[nodiscard]] std::string status_json() const;
   [[nodiscard]] bool wifi_connected() const;
@@ -77,6 +79,10 @@ class Net {
   // Applies new credentials and reconnects without a reboot.
   Result<void> apply_wifi(const Config& config);
   void set_device_name(std::string name);
+  void set_theme_blue(std::string color);
+  [[nodiscard]] std::string theme_blue() const;
+  void request_theme_color(uint16_t color);
+  [[nodiscard]] std::optional<uint16_t> take_theme_color();
   void note_connected();
   void note_disconnected();
   void stop();
@@ -119,6 +125,10 @@ class Net {
   std::function<std::string()> status_provider_;
   std::atomic<bool> configured_{false};
   std::atomic<bool> library_changed_{false};
+  std::atomic<uint16_t> theme_color_{0};
+  std::atomic<bool> theme_pending_{false};
+  mutable std::mutex theme_lock_;
+  std::string theme_blue_ = "#000083";
   std::atomic<bool> catalog_busy_{false};
   bool started_ = false;
   bool driver_ready_ = false;

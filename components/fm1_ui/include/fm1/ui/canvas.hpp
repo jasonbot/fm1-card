@@ -37,6 +37,7 @@ class Canvas {
 
   Canvas();
   void clear(uint8_t color = 0);
+  void set_palette(uint8_t index, uint16_t color);
   void pixel(int x, int y, uint8_t color);
   void fill(int x, int y, int width, int height, uint8_t color);
   void frame(int x, int y, int width, int height, uint8_t color);

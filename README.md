@@ -57,6 +57,7 @@ While Wi-Fi is connected, the device answers UDP discovery on port `8135`
 - `POST /firmwares?name=<file>.fwsc` — upload/overwrite a package; optional
   `title`, `author`, `version`, `description`, `tags` metadata is persisted
 - `GET /catalog` — current manifest size, SHA-256, entry count and mtime
+- `POST /theme?color=RRGGBB` — set and persist the blue accent color
 - `POST /catalog` — upload a JSON firmware manifest; atomically rebuilds the
   catalog cache and saves it as `fm1-card/firmwares.json`
 
@@ -153,6 +154,7 @@ Set `CLANG_FORMAT=/path/to/clang-format` if the binary is not on `PATH`.
 ```json
 {
   "device_name": "Cardputer",
+  "theme_blue": "#000083",
   "wifi": { "ssid": "your-ssid", "password": "your-password" }
 }
 ```

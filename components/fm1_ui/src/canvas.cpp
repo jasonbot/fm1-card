@@ -25,6 +25,10 @@ Canvas::Canvas() {
   palette_[15] = 0x87F0;  // 15 light green
 }
 
+void Canvas::set_palette(uint8_t index, uint16_t color) {
+  if (index < palette_.size()) palette_[index] = color;
+}
+
 void Canvas::clear(uint8_t color) {
   const uint8_t packed = static_cast<uint8_t>((color & 0x0F) | ((color & 0x0F) << 4));
   pixels_.fill(packed);

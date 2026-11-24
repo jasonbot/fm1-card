@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstring>
+#include <mutex>
 
 #include <lwjson/lwjson.h>
 
@@ -12,6 +13,7 @@ constexpr const char* kConfigPath = "fm1-card/config.json";
 constexpr const char* kTemplate =
     "{\n"
     "  \"device_name\": \"Cardputer\",\n"
+    "  \"theme_blue\": \"#000083\",\n"
     "  \"wifi\": { \"ssid\": \"\", \"password\": \"\" }\n"
     "}\n";
 
@@ -84,6 +86,9 @@ Result<Config> load_config(Storage& storage) {
     return fail("config.json is not valid JSON");
   }
   config.device_name = normalize_device_name(value_of(lwjson_find(&json, "device_name")));
+  if (const auto blue = parse_hex_color(value_of(lwjson_find(&json, "theme_blue")))) {
+    config.theme_blue = format_hex_color(*blue);
+  }
   const auto* wifi = lwjson_find(&json, "wifi");
   if (wifi != nullptr) {
     config.ssid = value_of(lwjson_find_ex(&json, wifi, "ssid"));
@@ -97,6 +102,19 @@ Result<void> write_config_template(Storage& storage) {
   return storage.write_text(kConfigPath, kTemplate);
 }
 
+Result<Config> update_config(Storage& storage,
+                             const std::function<void(Config&)>& mutate) {
+  static std::mutex lock;
+  std::lock_guard guard(lock);
+  auto loaded = load_config(storage);
+  if (!loaded) return std::unexpected(loaded.error());
+  Config config = std::move(*loaded);
+  mutate(config);
+  auto saved = save_config(storage, config);
+  if (!saved) return std::unexpected(saved.error());
+  return config;
+}
+
 Result<void> save_config(Storage& storage, const Config& config) {
   if (!storage.mounted()) return fail("no SD card");
   (void)storage.ensure_dir("fm1-card");
@@ -104,6 +122,8 @@ Result<void> save_config(Storage& storage, const Config& config) {
   text.reserve(512);
   text += "{\n  \"device_name\": \"";
   text += json_escape(normalize_device_name(config.device_name));
+  text += "\",\n  \"theme_blue\": \"";
+  text += json_escape(config.theme_blue);
   text += "\",\n  \"wifi\": { \"ssid\": \"";
   text += json_escape(config.ssid);
   text += "\", \"password\": \"";

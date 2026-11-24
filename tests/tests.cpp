@@ -10,6 +10,7 @@
 #include "fm1/identity.hpp"
 #include "fm1/midi.hpp"
 #include "fm1/package.hpp"
+#include "fm1/platform/config.hpp"
 #include "fm1/routing.hpp"
 #include "fm1/update.hpp"
 #include "fm1/wl82.hpp"
@@ -391,6 +392,21 @@ void test_catalog_zoo() {
   }
 }
 
+void test_theme_colors() {
+  const auto blue = fm1::platform::parse_hex_color("#000084");
+  CHECK(blue.has_value());
+  CHECK_EQ(*blue, 0x0010);
+  CHECK_EQ(fm1::platform::format_hex_color(*blue), "#000083");
+  CHECK_EQ(fm1::platform::parse_hex_color("FF6600"), 0xFB20);
+  CHECK(!fm1::platform::parse_hex_color("GGGGGG").has_value());
+  CHECK(!fm1::platform::parse_hex_color("12345").has_value());
+  for (uint32_t value = 0; value <= 0xFFFF; ++value) {
+    const auto color = static_cast<uint16_t>(value);
+    CHECK_EQ(fm1::platform::parse_hex_color(fm1::platform::format_hex_color(color)),
+             color);
+  }
+}
+
 void test_smk_variant() {
   fm1::catalog::Entry entry;
   entry.device = fm1::catalog::Device::Smk37;
@@ -431,6 +447,7 @@ int main() {
   test_catalog();
   test_catalog_zoo();
   test_smk_variant();
+  test_theme_colors();
   test_canvas();
   if (failures == 0) {
     std::printf("all tests passed\n");

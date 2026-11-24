@@ -161,6 +161,9 @@ void App::run() {
     const bool had_config = storage_.read_text("fm1-card/config.json").has_value();
     if (auto config = platform::load_config(storage_); config) {
       device_name_ = config->device_name;
+      if (auto blue = platform::parse_hex_color(config->theme_blue)) {
+        ui_.canvas().set_palette(3, *blue);
+      }
       if (!had_config) {
         state_.pane = ui::Pane::System;
         set_message("Welcome: press W in SYS to set up Wi-Fi", false, 15'000);
@@ -248,6 +251,10 @@ void App::ui_loop() {
     if (net_.take_library_change()) {
       library_dirty_ = true;
       installed_metadata_valid_ = false;
+    }
+    if (auto blue = net_.take_theme_color()) {
+      ui_.canvas().set_palette(3, *blue);
+      dirty_ = true;
     }
     if (library_dirty_.exchange(false)) {
       const bool filter_only = filter_refresh_;
@@ -466,16 +473,19 @@ void App::net_loop() {
       }
       case NetCommand::WifiConnect: {
         set_message("Wi-Fi: connecting to \"" + job.ssid + "\"...", false, 30'000);
-        auto loaded = platform::load_config(storage_);
-        platform::Config config = loaded ? *loaded : platform::Config{};
+        platform::Config config;
         config.ssid = job.ssid;
         config.password = job.password;
         if (storage_.mounted()) {
-          auto saved = platform::save_config(storage_, config);
-          if (!saved) {
-            set_message("Wi-Fi config: " + saved.error().message, true, 15'000);
+          auto updated = platform::update_config(storage_, [&](platform::Config& value) {
+            value.ssid = job.ssid;
+            value.password = job.password;
+          });
+          if (!updated) {
+            set_message("Wi-Fi config: " + updated.error().message, true, 15'000);
             break;
           }
+          config = *updated;
         } else {
           set_message("Wi-Fi config not saved: no SD card", true, 15'000);
         }
@@ -489,17 +499,16 @@ void App::net_loop() {
         break;
       }
       case NetCommand::SaveDeviceName: {
-        auto loaded = platform::load_config(storage_);
-        platform::Config config = loaded ? *loaded : platform::Config{};
-        config.device_name = job.name;
         net_.set_device_name(job.name);
         if (!storage_.mounted()) {
           set_message("Device name active, not saved: no SD card", true, 15'000);
           break;
         }
-        auto saved = platform::save_config(storage_, config);
-        if (!saved) {
-          set_message("Device name: " + saved.error().message, true, 15'000);
+        auto updated = platform::update_config(storage_, [&](platform::Config& value) {
+          value.device_name = job.name;
+        });
+        if (!updated) {
+          set_message("Device name: " + updated.error().message, true, 15'000);
         } else {
           set_message("Device name: " + job.name, false, 8'000);
         }

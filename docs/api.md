@@ -31,6 +31,7 @@ Returns current state:
   "app": "fm1-card",
   "version": "0.1.2",
   "name": "Cardputer",
+  "theme_blue": "#000083",
   "sd": true,
   "wifi": "connected",
   "ssid": "scheirer-eero",
@@ -60,6 +61,19 @@ Add `?detail=1` to include `size`, the sidecar `sha256`, and persisted
 `title`, `author`, `version`, `description`, `tags`, and `product` fields.
 This requires a stat/meta pass over every file and is much slower on SD.
 `/firmwares/info` is better for one-file lookups.
+
+## `POST /theme?color=RRGGBB`
+
+Sets palette index 3 (the navy title/background accent), applies it to the
+running UI, and persists it in `fm1-card/config.json` as `theme_blue`.
+
+```sh
+curl -X POST 'http://<device>/theme?color=FF6600'
+# {"ok":true,"theme_blue":"#FF6600"}
+```
+
+`#` must be URL-encoded (`%23`) or omitted. Invalid colors return HTTP 400.
+The six-digit value is quantized to the display's RGB565 panel.
 
 ## `POST /catalog`
 

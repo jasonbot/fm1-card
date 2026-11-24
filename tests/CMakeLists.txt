@@ -41,6 +41,7 @@ target_include_directories(fm1_local_meta PUBLIC
   ../components/lwjson/include/lwjson)
 
 add_executable(fm1_core_tests tests.cpp)
+target_include_directories(fm1_core_tests PRIVATE ../components/fm1_platform/include)
 add_executable(fm1_local_meta_tests test_local_meta.cpp)
 target_link_libraries(fm1_local_meta_tests PRIVATE fm1_local_meta)
 target_link_libraries(fm1_core_tests PRIVATE fm1_core fm1_ui_canvas)

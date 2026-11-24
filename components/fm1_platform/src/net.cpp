@@ -181,12 +181,23 @@ void Net::set_status_provider(std::function<std::string()> provider) {
 }
 
 std::string Net::status_json() const {
-  return status_provider_ ? status_provider_() : std::string("{}");
+  std::string json = status_provider_ ? status_provider_() : std::string("{}");
+  std::string color;
+  {
+    std::lock_guard lock(theme_lock_);
+    color = theme_blue_;
+  }
+  if (json == "{}") return "{\"theme_blue\":\"" + color + "\"}";
+  if (!json.empty() && json.front() == '{') {
+    json.insert(1, "\"theme_blue\":\"" + color + "\",");
+  }
+  return json;
 }
 
 Result<void> Net::start(Storage& storage, const Config& config) {
   storage_ = &storage;
   set_device_name(config.device_name);
+  set_theme_blue(config.theme_blue);
   ssid_ = config.ssid;
   configured_.store(!ssid_.empty());
   if (auto ready = ensure_wifi_driver(); !ready) {
@@ -760,6 +771,47 @@ esp_err_t Net::upload_catalog(httpd_req_t* request) {
   return httpd_resp_send(request, body.data(), body.size());
 }
 
+esp_err_t Net::set_theme(httpd_req_t* request) {
+  if (storage_ == nullptr || !storage_->mounted()) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "no SD card");
+    return ESP_FAIL;
+  }
+  const std::size_t query_len = httpd_req_get_url_query_len(request);
+  std::string value;
+  if (query_len > 0 && query_len < 128) {
+    std::string query(query_len + 1, '\0');
+    if (httpd_req_get_url_query_str(request, query.data(), query.size()) == ESP_OK) {
+      char raw[32]{};
+      if (httpd_query_key_value(query.c_str(), "color", raw, sizeof(raw)) == ESP_OK) {
+        value = url_decode(raw);
+      }
+    }
+  }
+  const auto color = parse_hex_color(value);
+  if (!color) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "color=RRGGBB required");
+    return ESP_FAIL;
+  }
+  auto updated = update_config(*storage_, [&](Config& config) {
+    config.theme_blue = format_hex_color(*color);
+  });
+  if (!updated) {
+    set_cors(request);
+    httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        updated.error().message.c_str());
+    return ESP_FAIL;
+  }
+  set_theme_blue(updated->theme_blue);
+  request_theme_color(*color);
+  set_cors(request);
+  httpd_resp_set_type(request, "application/json");
+  const std::string body =
+      "{\"ok\":true,\"theme_blue\":\"" + updated->theme_blue + "\"}";
+  return httpd_resp_send(request, body.data(), body.size());
+}
+
 Result<void> Net::start_http() {
   if (http_ != nullptr) return {};
   const auto log = [&](std::string_view text) {
@@ -770,7 +822,7 @@ Result<void> Net::start_http() {
   start_discovery();
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
-  config.max_uri_handlers = 10;
+  config.max_uri_handlers = 12;
   config.max_open_sockets = 4;
   config.stack_size = 20480;
   config.lru_purge_enable = true;
@@ -841,6 +893,20 @@ Result<void> Net::start_http() {
   catalog_options.method = HTTP_OPTIONS;
   catalog_options.handler = options_handler;
   httpd_register_uri_handler(server, &catalog_options);
+
+  httpd_uri_t theme = status;
+  theme.uri = "/theme";
+  theme.method = HTTP_POST;
+  theme.handler = [](httpd_req_t* request) {
+    return static_cast<Net*>(request->user_ctx)->set_theme(request);
+  };
+  httpd_register_uri_handler(server, &theme);
+
+  httpd_uri_t theme_options{};
+  theme_options.uri = "/theme";
+  theme_options.method = HTTP_OPTIONS;
+  theme_options.handler = options_handler;
+  httpd_register_uri_handler(server, &theme_options);
 
   log("http/udp started on 80/8135\n");
   return {};
@@ -923,6 +989,26 @@ Result<void> Net::connect_wifi() {
   ESP_LOGI(kTag, "Wi-Fi connected");
   state_.store(WifiState::Connected);
   return {};
+}
+
+void Net::set_theme_blue(std::string color) {
+  std::lock_guard lock(theme_lock_);
+  theme_blue_ = std::move(color);
+}
+
+std::string Net::theme_blue() const {
+  std::lock_guard lock(theme_lock_);
+  return theme_blue_;
+}
+
+void Net::request_theme_color(uint16_t color) {
+  theme_color_.store(color);
+  theme_pending_.store(true);
+}
+
+std::optional<uint16_t> Net::take_theme_color() {
+  if (!theme_pending_.exchange(false)) return std::nullopt;
+  return theme_color_.load();
 }
 
 void Net::set_device_name(std::string name) {
