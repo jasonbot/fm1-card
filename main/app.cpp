@@ -27,8 +27,7 @@ namespace {
 constexpr const char* kTag = "fm1-app";
 constexpr std::size_t kPackagePage = 32;
 
-void blit_cb(void* context, int x, int y, int width, int height,
-             std::span<const uint16_t> pixels) {
+void blit_cb(void* context, int x, int y, int width, int height, std::span<const uint16_t> pixels) {
   static_cast<platform::Display*>(context)->blit(x, y, width, height, pixels);
 }
 
@@ -41,11 +40,21 @@ std::string json_escape(std::string_view text) {
   out.reserve(text.size() + 8);
   for (const char c : text) {
     switch (c) {
-      case '"': out += "\\\""; break;
-      case '\\': out += "\\\\"; break;
-      case '\n': out += "\\n"; break;
-      case '\r': out += "\\r"; break;
-      case '\t': out += "\\t"; break;
+      case '"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
       default:
         if (static_cast<unsigned char>(c) >= 0x20) out.push_back(c);
         break;
@@ -56,9 +65,12 @@ std::string json_escape(std::string_view text) {
 
 }  // namespace
 
-App::App(platform::Display& display, platform::Keyboard& keyboard,
-         platform::Storage& storage, platform::Battery& battery)
-    : display_(display), keyboard_(keyboard), storage_(storage), battery_(battery),
+App::App(platform::Display& display, platform::Keyboard& keyboard, platform::Storage& storage,
+         platform::Battery& battery)
+    : display_(display),
+      keyboard_(keyboard),
+      storage_(storage),
+      battery_(battery),
       library_(storage) {}
 
 void App::run() {
@@ -108,12 +120,11 @@ void App::run() {
     (void)storage_.ensure_dir("fm1-card/backups");
     (void)storage_.ensure_dir("fm1-card/logs");
     char boot[160]{};
-    std::snprintf(boot, sizeof(boot), "reset=%d free=%u largest=%u\n",
-                  static_cast<int>(esp_reset_reason()),
-                  static_cast<unsigned>(
-                      heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
-                  static_cast<unsigned>(
-                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+    std::snprintf(
+        boot, sizeof(boot), "reset=%d free=%u largest=%u\n", static_cast<int>(esp_reset_reason()),
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+        static_cast<unsigned>(
+            heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
     (void)storage_.write_text("fm1-card/logs/boot.log", boot);
   }
   if (storage_.mounted()) {
@@ -121,14 +132,19 @@ void App::run() {
       device_name_ = config->device_name;
     }
   }
-  queue_net({.command = NetCommand::Start, .entry = {}, .destination = {}, .ssid = {}, .password = {}, .name = {}});
+  queue_net({.command = NetCommand::Start,
+             .entry = {},
+             .destination = {},
+             .ssid = {},
+             .password = {},
+             .name = {}});
 
-  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->ui_loop(); }, "fm1-ui",
-                          8192, this, 4, nullptr, 1);
-  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->clock_loop(); },
-                          "fm1-clock", 4096, this, 5, nullptr, 1);
-  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->net_loop(); }, "fm1-net",
-                          20480, this, 2, nullptr, 0);
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->ui_loop(); }, "fm1-ui", 8192,
+                          this, 4, nullptr, 1);
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->clock_loop(); }, "fm1-clock",
+                          4096, this, 5, nullptr, 1);
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->net_loop(); }, "fm1-net", 20480,
+                          this, 2, nullptr, 0);
 }
 
 void App::set_message(std::string message, bool error, uint32_t ttl_ms) {
@@ -262,8 +278,8 @@ void App::net_loop() {
         break;
       }
       case NetCommand::Refresh: {
-        set_message(net_.wifi_connected() ? "Fetching catalog..."
-                                          : "Wi-Fi: connecting...", false, 30'000);
+        set_message(net_.wifi_connected() ? "Fetching catalog..." : "Wi-Fi: connecting...", false,
+                    30'000);
         auto refreshed = net_.refresh_catalog([&](const platform::NetProgress& progress) {
           if (progress.total > 0) {
             const int pct = static_cast<int>(progress.received * 100 / progress.total);
@@ -281,14 +297,15 @@ void App::net_loop() {
       }
       case NetCommand::Download: {
         set_message(net_.wifi_connected() ? ("Downloading " + job.entry.name + "...")
-                                          : "Wi-Fi: connecting...", false, 30'000);
-        auto downloaded = net_.download(job.entry, job.destination,
-                                        [&](const platform::NetProgress& progress) {
-          if (progress.total > 0) {
-            const int pct = static_cast<int>(progress.received * 100 / progress.total);
-            set_message("Download: " + std::to_string(pct) + "%");
-          }
-        });
+                                          : "Wi-Fi: connecting...",
+                    false, 30'000);
+        auto downloaded =
+            net_.download(job.entry, job.destination, [&](const platform::NetProgress& progress) {
+              if (progress.total > 0) {
+                const int pct = static_cast<int>(progress.received * 100 / progress.total);
+                set_message("Download: " + std::to_string(pct) + "%");
+              }
+            });
         if (!downloaded) {
           set_message(downloaded.error().message, true);
         } else {
@@ -365,12 +382,11 @@ void App::net_loop() {
             bool downloaded = false;
             std::string error;
             for (int attempt = 0; attempt < 2 && !downloaded; ++attempt) {
-              auto result = net_.download(
-                  entry, *destination, [&](const platform::NetProgress& progress) {
+              auto result =
+                  net_.download(entry, *destination, [&](const platform::NetProgress& progress) {
                     if (progress.total > 0) {
                       std::lock_guard lock(hoard_lock_);
-                      hoard_.percent =
-                          static_cast<int>(progress.received * 100 / progress.total);
+                      hoard_.percent = static_cast<int>(progress.received * 100 / progress.total);
                     }
                   });
               if (result) {
@@ -408,8 +424,7 @@ void App::net_loop() {
         if (!walked) {
           set_message("HOARD stopped: catalog read error", true, 20'000);
         } else if (hoard_cancel_.load()) {
-          set_message("HOARD cancelled after " + std::to_string(done) + " entries", false,
-                      20'000);
+          set_message("HOARD cancelled after " + std::to_string(done) + " entries", false, 20'000);
         } else if (failed > 0) {
           set_message("HOARD done: " + std::to_string(failed) + " failed", true, 20'000);
         } else {
@@ -483,8 +498,7 @@ void App::net_loop() {
         } else {
           catalog_offset_ = 0;
           library_dirty_ = true;
-          set_message("Local manifest: " + std::to_string(*loaded) + " entries", false,
-                      10'000);
+          set_message("Local manifest: " + std::to_string(*loaded) + " entries", false, 10'000);
         }
         break;
       }
@@ -502,13 +516,11 @@ void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
   }
   if (reload_local) {
     std::size_t local_total = 0;
-    auto local_page = library_.local_packages_page(local_offset_, 32, &local_total,
-                                                   state_.filter)
+    auto local_page = library_.local_packages_page(local_offset_, 32, &local_total, state_.filter)
                           .value_or(std::vector<platform::LocalPackage>{});
     if (local_page.empty() && local_total > 0 && local_offset_ > 0) {
       local_offset_ = ((local_total - 1) / 32) * 32;
-      local_page = library_.local_packages_page(local_offset_, 32, &local_total,
-                                                state_.filter)
+      local_page = library_.local_packages_page(local_offset_, 32, &local_total, state_.filter)
                        .value_or(std::vector<platform::LocalPackage>{});
     }
     state_.local = std::move(local_page);
@@ -537,7 +549,7 @@ void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
   state_.catalog_installed.assign(state_.catalog.size(), false);
   for (std::size_t i = 0; i < state_.catalog.size(); ++i) {
     auto path = library_.package_path(state_.catalog[i].id, state_.catalog[i].version);
-    struct stat info {};
+    struct stat info{};
     if (path && stat(path->c_str(), &info) == 0) {
       state_.catalog_installed[i] = true;
     }
@@ -551,28 +563,42 @@ void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
   }
   if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
     switch (library_filter_.variant) {
-      case catalog::SmkVariant::Pro: state_.chip_filter = "PRO"; break;
-      case catalog::SmkVariant::Elite: state_.chip_filter = "ELITE"; break;
-      case catalog::SmkVariant::Mke: state_.chip_filter = "MKE"; break;
-      default: state_.chip_filter = "ALL"; break;
+      case catalog::SmkVariant::Pro:
+        state_.chip_filter = "PRO";
+        break;
+      case catalog::SmkVariant::Elite:
+        state_.chip_filter = "ELITE";
+        break;
+      case catalog::SmkVariant::Mke:
+        state_.chip_filter = "MKE";
+        break;
+      default:
+        state_.chip_filter = "ALL";
+        break;
     }
   } else {
     switch (library_filter_.chip) {
-      case platform::ChipFilter::New: state_.chip_filter = "NEW"; break;
-      case platform::ChipFilter::Old: state_.chip_filter = "OLD"; break;
-      default: state_.chip_filter = "ALL"; break;
+      case platform::ChipFilter::New:
+        state_.chip_filter = "NEW";
+        break;
+      case platform::ChipFilter::Old:
+        state_.chip_filter = "OLD";
+        break;
+      default:
+        state_.chip_filter = "ALL";
+        break;
     }
   }
   const int max_index = static_cast<int>(state_.local.size() + state_.catalog.size()) - 1;
   if (state_.selection > max_index) state_.selection = std::max(0, max_index);
   if (storage_.mounted()) {
     char line[160]{};
-    std::snprintf(line, sizeof(line), "shown=%zu total=%zu free=%u largest=%u\n",
-                  state_.local.size(), state_.local_total,
-                  static_cast<unsigned>(
-                      heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
-                  static_cast<unsigned>(
-                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+    std::snprintf(
+        line, sizeof(line), "shown=%zu total=%zu free=%u largest=%u\n", state_.local.size(),
+        state_.local_total,
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+        static_cast<unsigned>(
+            heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
     (void)storage_.write_text("fm1-card/logs/library.log", line);
   }
   dirty_ = true;
@@ -610,8 +636,7 @@ void App::sync_ui() {
       }
     }
     // No charger-status pin on this board: expire a stale inference.
-    if (battery_charging_ && charge_seen_us_ != 0 &&
-        battery_now - charge_seen_us_ > 120'000'000) {
+    if (battery_charging_ && charge_seen_us_ != 0 && battery_now - charge_seen_us_ > 120'000'000) {
       battery_charging_ = false;
     }
     if (mv >= 0) last_battery_mv_ = mv;
@@ -620,8 +645,7 @@ void App::sync_ui() {
   state_.battery_charging = battery_charging_;
   {
     std::lock_guard lock(message_lock_);
-    state_.message =
-        (esp_timer_get_time() / 1000 < message_until_) ? message_ : std::string{};
+    state_.message = (esp_timer_get_time() / 1000 < message_until_) ? message_ : std::string{};
     state_.message_error = message_is_error_;
   }
   {
@@ -652,8 +676,8 @@ void App::sync_ui() {
         popup_.items.emplace_back(line);
       }
     }
-    popup_.selection = std::clamp(
-        popup_.selection, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
+    popup_.selection =
+        std::clamp(popup_.selection, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
   } else if (popup_.kind == PopupKind::WifiPassword) {
     popup_.title = "WI-FI: " + wifi_ssid_;
     popup_.items.clear();
@@ -667,8 +691,7 @@ void App::sync_ui() {
     popup_.items.push_back("ENTER save   ESC cancel");
     popup_.selection = 0;
   }
-  state_.popup_hint =
-      popup_.kind == PopupKind::Packages ? "ESC Back   ENTER Flash" : std::string{};
+  state_.popup_hint = popup_.kind == PopupKind::Packages ? "ESC Back   ENTER Flash" : std::string{};
   state_.popup = popup_.kind != PopupKind::None;
   state_.popup_title = popup_.title;
   state_.popup_items = popup_.items;
@@ -695,34 +718,40 @@ void App::sync_ui() {
   json += state_.sd_mounted ? "true" : "false";
   json += ",\"wifi\":\"";
   switch (state_.wifi_state) {
-    case platform::WifiState::Connected: json += "connected"; break;
-    case platform::WifiState::Connecting: json += "connecting"; break;
-    case platform::WifiState::Failed: json += "failed"; break;
-    default: json += "unconfigured"; break;
+    case platform::WifiState::Connected:
+      json += "connected";
+      break;
+    case platform::WifiState::Connecting:
+      json += "connecting";
+      break;
+    case platform::WifiState::Failed:
+      json += "failed";
+      break;
+    default:
+      json += "unconfigured";
+      break;
   }
-  json += "\",\"ssid\":\"" + state_.ssid + "\",\"rssi\":" +
-          std::to_string(state_.rssi) + ",\"devices\":[";
+  json += "\",\"ssid\":\"" + state_.ssid + "\",\"rssi\":" + std::to_string(state_.rssi) +
+          ",\"devices\":[";
   char item[192]{};
   for (std::size_t i = 0; i < state_.midi.size(); ++i) {
     const auto& port = state_.midi[i];
     std::snprintf(item, sizeof(item),
                   "%s{\"slot\":%u,\"path\":\"%s\",\"identity\":\"%s\",\"clock\":%s}",
                   i == 0 ? "" : ",", static_cast<unsigned>(port.slot), port.path.c_str(),
-                  port.identity.c_str(),
-                  state_.clock_mask & (1u << port.slot) ? "true" : "false");
+                  port.identity.c_str(), state_.clock_mask & (1u << port.slot) ? "true" : "false");
     json += item;
   }
   json += "],\"clock\":{\"bpm\":";
-  std::snprintf(item, sizeof(item), "%lu,\"running\":%s}",
-                static_cast<unsigned long>(state_.bpm),
+  std::snprintf(item, sizeof(item), "%lu,\"running\":%s}", static_cast<unsigned long>(state_.bpm),
                 state_.clock_running ? "true" : "false");
   json += item;
   json += ",\"msc\":";
   std::snprintf(item, sizeof(item), "%zu", state_.msc.size());
   json += item;
   json += ",\"library\":{\"catalog\":";
-  std::snprintf(item, sizeof(item), "%zu,\"local\":%zu,\"local_total\":%zu}",
-                state_.catalog_total, state_.local.size(), state_.local_total);
+  std::snprintf(item, sizeof(item), "%zu,\"local\":%zu,\"local_total\":%zu}", state_.catalog_total,
+                state_.local.size(), state_.local_total);
   json += item;
   json += ",\"hoard\":";
   json += state_.hoard_active ? "true" : "false";
@@ -779,8 +808,8 @@ void App::toggle_clock() {
 }
 
 void App::set_bpm(int delta) {
-  const int bpm = std::clamp<int>(static_cast<int>(clock_.bpm()) + delta, clock::kMinBpm,
-                                  clock::kMaxBpm);
+  const int bpm =
+      std::clamp<int>(static_cast<int>(clock_.bpm()) + delta, clock::kMinBpm, clock::kMaxBpm);
   clock_.set_bpm(static_cast<uint32_t>(bpm));
   dirty_ = true;
 }
@@ -853,8 +882,7 @@ void App::build_package_popup() {
   popup_.paths.clear();
   for (std::size_t choice = 0; choice < package_choices_.size(); ++choice) {
     const auto& local = package_choices_[choice];
-    if (!port->identity.empty() &&
-        !identity::package_fits(port->identity, local.product)) {
+    if (!port->identity.empty() && !identity::package_fits(port->identity, local.product)) {
       continue;
     }
     if (library_filter_.device && local.device != *library_filter_.device) continue;
@@ -877,10 +905,14 @@ void App::build_package_popup() {
     std::string label = has_meta ? package_meta_[choice].name : local.name;
     if (label.empty()) label = local.product;
     if (has_meta) {
-      if (package_meta_[choice].new_chip && package_meta_[choice].old_chip) label += " [ANY]";
-      else if (package_meta_[choice].new_chip) label += " [NEW]";
-      else if (package_meta_[choice].old_chip) label += " [OLD]";
-      else label += " [?]";
+      if (package_meta_[choice].new_chip && package_meta_[choice].old_chip)
+        label += " [ANY]";
+      else if (package_meta_[choice].new_chip)
+        label += " [NEW]";
+      else if (package_meta_[choice].old_chip)
+        label += " [OLD]";
+      else
+        label += " [?]";
     }
     popup_.items.push_back(std::move(label));
     popup_.values.push_back(static_cast<int>(choice));
@@ -890,27 +922,40 @@ void App::build_package_popup() {
     filter = *library_filter_.device == catalog::Device::Smk37 ? "SMK" : "FM1";
     if (*library_filter_.device == catalog::Device::Smk37) {
       switch (library_filter_.variant) {
-        case catalog::SmkVariant::Pro: filter += "/PRO"; break;
-        case catalog::SmkVariant::Elite: filter += "/ELITE"; break;
-        case catalog::SmkVariant::Mke: filter += "/MKE"; break;
-        default: break;
+        case catalog::SmkVariant::Pro:
+          filter += "/PRO";
+          break;
+        case catalog::SmkVariant::Elite:
+          filter += "/ELITE";
+          break;
+        case catalog::SmkVariant::Mke:
+          filter += "/MKE";
+          break;
+        default:
+          break;
       }
     } else {
       switch (library_filter_.chip) {
-        case platform::ChipFilter::New: filter += "/NEW"; break;
-        case platform::ChipFilter::Old: filter += "/OLD"; break;
-        default: break;
+        case platform::ChipFilter::New:
+          filter += "/NEW";
+          break;
+        case platform::ChipFilter::Old:
+          filter += "/OLD";
+          break;
+        default:
+          break;
       }
     }
   }
   const std::size_t page = package_offset_ / kPackagePage + 1;
-  const std::size_t pages = std::max<std::size_t>(1, (package_total_ + kPackagePage - 1) / kPackagePage);
+  const std::size_t pages =
+      std::max<std::size_t>(1, (package_total_ + kPackagePage - 1) / kPackagePage);
   popup_.title = "FLASH " + std::to_string(page) + "/" + std::to_string(pages) + " " + filter;
   if (popup_.items.empty()) {
     popup_.items.push_back("No matching packages");
   }
-  popup_.selection = std::clamp(
-      popup_.selection, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
+  popup_.selection =
+      std::clamp(popup_.selection, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
 }
 
 void App::open_flash_targets(int local_index) {
@@ -973,7 +1018,12 @@ void App::open_wifi_dialog() {
     wifi_scan_error_.clear();
     wifi_scan_running_ = true;
   }
-  queue_net({.command = NetCommand::WifiScan, .entry = {}, .destination = {}, .ssid = {}, .password = {}, .name = {}});
+  queue_net({.command = NetCommand::WifiScan,
+             .entry = {},
+             .destination = {},
+             .ssid = {},
+             .password = {},
+             .name = {}});
   dirty_ = true;
 }
 
@@ -988,8 +1038,7 @@ void App::open_name_dialog() {
 
 void App::run_popup_action() {
   if (popup_.kind == PopupKind::Packages) {
-    if (popup_.selection < 0 ||
-        popup_.selection >= static_cast<int>(popup_.values.size())) {
+    if (popup_.selection < 0 || popup_.selection >= static_cast<int>(popup_.values.size())) {
       popup_ = {};
       return;
     }
@@ -998,28 +1047,31 @@ void App::run_popup_action() {
       popup_ = {};
       return;
     }
-    const std::string& path =
-        package_choices_[static_cast<std::size_t>(choice)].path;
+    const std::string& path = package_choices_[static_cast<std::size_t>(choice)].path;
     auto port = usb_.midi_port(static_cast<uint8_t>(popup_.context));
     const auto kind = (port && !port->identity.empty()) ? platform::FlashKind::Normal
-                                                       : platform::FlashKind::Rescue;
+                                                        : platform::FlashKind::Rescue;
     start_flash(kind, static_cast<uint8_t>(popup_.context), path);
     popup_ = {};
   } else if (popup_.kind == PopupKind::Sinks) {
-    if (popup_.selection < 0 ||
-        popup_.selection >= static_cast<int>(state_.midi.size())) {
+    if (popup_.selection < 0 || popup_.selection >= static_cast<int>(state_.midi.size())) {
       return;
     }
     const auto sink = state_.midi[static_cast<std::size_t>(popup_.selection)].slot;
     router_.toggle(static_cast<uint8_t>(popup_.context), sink);
     popup_.items[static_cast<std::size_t>(popup_.selection)] =
         std::string(router_.forwards(static_cast<uint8_t>(popup_.context), sink) ? "[x] "
-                                                                               : "[ ] ") +
+                                                                                 : "[ ] ") +
         label_of(state_.midi[static_cast<std::size_t>(popup_.selection)]);
     dirty_ = true;
   } else if (popup_.kind == PopupKind::HoardConfirm) {
     if (popup_.selection == 0) {
-      queue_net({.command = NetCommand::Hoard, .entry = {}, .destination = {}, .ssid = {}, .password = {}, .name = {}});
+      queue_net({.command = NetCommand::Hoard,
+                 .entry = {},
+                 .destination = {},
+                 .ssid = {},
+                 .password = {},
+                 .name = {}});
       set_message("HOARD starting...", false, 10'000);
     }
     popup_ = {};
@@ -1037,16 +1089,15 @@ void App::run_popup_action() {
     const auto& port = state_.midi[static_cast<std::size_t>(target)];
     state_.pane = ui::Pane::Devices;
     state_.selection = target;
-    const auto kind = port.identity.empty() ? platform::FlashKind::Rescue
-                                            : platform::FlashKind::Normal;
+    const auto kind =
+        port.identity.empty() ? platform::FlashKind::Rescue : platform::FlashKind::Normal;
     start_flash(kind, port.slot, popup_.paths.front());
     popup_ = {};
   } else if (popup_.kind == PopupKind::MscActions) {
     if (popup_.selection == 0) {
       start_flash(platform::FlashKind::Backup, static_cast<uint8_t>(popup_.context), {});
     } else {
-      start_flash(platform::FlashKind::InstallBootloader,
-                  static_cast<uint8_t>(popup_.context), {});
+      start_flash(platform::FlashKind::InstallBootloader, static_cast<uint8_t>(popup_.context), {});
     }
     popup_ = {};
   }
@@ -1055,10 +1106,7 @@ void App::run_popup_action() {
 void App::start_flash(platform::FlashKind kind, uint8_t slot, const std::string& package) {
   show_waiting("STARTING FLASH");
   router_.set_clock(slot, false);
-  platform::FlashJob job{.kind = kind,
-                          .slot = slot,
-                          .package_path = package,
-                          .output_path = {}};
+  platform::FlashJob job{.kind = kind, .slot = slot, .package_path = package, .output_path = {}};
   if (!flash_.submit(job)) {
     set_message("A flash is already running", true);
     return;
@@ -1071,11 +1119,14 @@ void App::run_menu_action(int index) {
     case ui::Pane::Devices:
       if (state_.selection < static_cast<int>(state_.midi.size())) {
         const auto slot = state_.midi[static_cast<std::size_t>(state_.selection)].slot;
-        if (index == 0) router_.set_clock(slot, !router_.clock_enabled(slot));
-        else if (index == 1) open_packages(slot);
+        if (index == 0)
+          router_.set_clock(slot, !router_.clock_enabled(slot));
+        else if (index == 1)
+          open_packages(slot);
         else if (index == 2)
           start_flash(platform::FlashKind::DownloadMode, slot, {});
-        else if (index > 2) set_message("Only MIDI devices can flash", true);
+        else if (index > 2)
+          set_message("Only MIDI devices can flash", true);
       } else if (index == 0) {
         const auto msc = static_cast<std::size_t>(state_.selection - state_.midi.size());
         if (msc < state_.msc.size()) open_msc_actions(state_.msc[msc].slot);
@@ -1113,8 +1164,8 @@ void App::run_menu_action(int index) {
                    .ssid = {},
                    .password = {},
                    .name = {}});
-        set_message(net_.wifi_connected() ? "Refreshing catalog..."
-                                          : "Wi-Fi: connecting...", false, 30'000);
+        set_message(net_.wifi_connected() ? "Refreshing catalog..." : "Wi-Fi: connecting...", false,
+                    30'000);
       } else if (index == 1) {
         queue_net({.command = NetCommand::LoadLocalCatalog,
                    .entry = {},
@@ -1124,10 +1175,12 @@ void App::run_menu_action(int index) {
                    .name = {}});
         set_message("Loading local catalog manifest...", false, 10'000);
       } else if (index == 2) {
-        if (!library_filter_.device) library_filter_.device = catalog::Device::Fm1;
+        if (!library_filter_.device)
+          library_filter_.device = catalog::Device::Fm1;
         else if (*library_filter_.device == catalog::Device::Fm1)
           library_filter_.device = catalog::Device::Smk37;
-        else library_filter_.device.reset();
+        else
+          library_filter_.device.reset();
         library_filter_.variant = catalog::SmkVariant::All;
         catalog_offset_ = 0;
         local_offset_ = 0;
@@ -1136,19 +1189,15 @@ void App::run_menu_action(int index) {
       } else if (index == 3) {
         if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
           library_filter_.variant =
-              library_filter_.variant == catalog::SmkVariant::All
-                  ? catalog::SmkVariant::Pro
-                  : library_filter_.variant == catalog::SmkVariant::Pro
-                        ? catalog::SmkVariant::Elite
-                        : library_filter_.variant == catalog::SmkVariant::Elite
-                              ? catalog::SmkVariant::Mke
-                              : catalog::SmkVariant::All;
+              library_filter_.variant == catalog::SmkVariant::All     ? catalog::SmkVariant::Pro
+              : library_filter_.variant == catalog::SmkVariant::Pro   ? catalog::SmkVariant::Elite
+              : library_filter_.variant == catalog::SmkVariant::Elite ? catalog::SmkVariant::Mke
+                                                                      : catalog::SmkVariant::All;
         } else {
-          library_filter_.chip = library_filter_.chip == platform::ChipFilter::All
-                                     ? platform::ChipFilter::New
-                                     : library_filter_.chip == platform::ChipFilter::New
-                                           ? platform::ChipFilter::Old
-                                           : platform::ChipFilter::All;
+          library_filter_.chip =
+              library_filter_.chip == platform::ChipFilter::All   ? platform::ChipFilter::New
+              : library_filter_.chip == platform::ChipFilter::New ? platform::ChipFilter::Old
+                                                                  : platform::ChipFilter::All;
         }
         catalog_offset_ = 0;
         local_offset_ = 0;
@@ -1168,8 +1217,10 @@ void App::run_menu_action(int index) {
       }
       break;
     case ui::Pane::System:
-      if (index == 0) open_wifi_dialog();
-      else if (index == 1) open_name_dialog();
+      if (index == 0)
+        open_wifi_dialog();
+      else if (index == 1)
+        open_name_dialog();
       break;
   }
   dirty_ = true;
@@ -1210,8 +1261,8 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
   if (popup_.kind == PopupKind::WifiPassword) {
     if (event.code == 0x29) {
       popup_.kind = PopupKind::WifiNetworks;
-      popup_.selection = std::clamp(popup_.selection, 0,
-                                    std::max(0, static_cast<int>(popup_.items.size()) - 1));
+      popup_.selection =
+          std::clamp(popup_.selection, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
       dirty_ = true;
       return;
     }
@@ -1232,8 +1283,7 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
       dirty_ = true;
       return;
     }
-    if (event.character >= 32 && event.character < 127 &&
-        wifi_password_.size() < 63) {
+    if (event.character >= 32 && event.character < 127 && wifi_password_.size() < 63) {
       wifi_password_.push_back(event.character);
       dirty_ = true;
     }
@@ -1255,19 +1305,15 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
     if (event.character == 'c' || event.character == 'C') {
       if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
         library_filter_.variant =
-            library_filter_.variant == catalog::SmkVariant::All
-                ? catalog::SmkVariant::Pro
-                : library_filter_.variant == catalog::SmkVariant::Pro
-                      ? catalog::SmkVariant::Elite
-                      : library_filter_.variant == catalog::SmkVariant::Elite
-                            ? catalog::SmkVariant::Mke
-                            : catalog::SmkVariant::All;
+            library_filter_.variant == catalog::SmkVariant::All     ? catalog::SmkVariant::Pro
+            : library_filter_.variant == catalog::SmkVariant::Pro   ? catalog::SmkVariant::Elite
+            : library_filter_.variant == catalog::SmkVariant::Elite ? catalog::SmkVariant::Mke
+                                                                    : catalog::SmkVariant::All;
       } else {
-        library_filter_.chip = library_filter_.chip == platform::ChipFilter::All
-                                   ? platform::ChipFilter::New
-                                   : library_filter_.chip == platform::ChipFilter::New
-                                         ? platform::ChipFilter::Old
-                                         : platform::ChipFilter::All;
+        library_filter_.chip =
+            library_filter_.chip == platform::ChipFilter::All   ? platform::ChipFilter::New
+            : library_filter_.chip == platform::ChipFilter::New ? platform::ChipFilter::Old
+                                                                : platform::ChipFilter::All;
       }
       load_package_page(0);
       return;
@@ -1285,8 +1331,8 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
           package_offset_ + kPackagePage < package_total_) {
         const int overflow = target - static_cast<int>(popup_.items.size());
         load_package_page(package_offset_ + kPackagePage);
-        popup_.selection = std::clamp(overflow, 0,
-                                      std::max(0, static_cast<int>(popup_.items.size()) - 1));
+        popup_.selection =
+            std::clamp(overflow, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
         return;
       }
       if (target < 0 && package_offset_ > 0) {
@@ -1295,13 +1341,12 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
                                       std::max(0, static_cast<int>(popup_.items.size()) - 1));
         return;
       }
-      popup_.selection = std::clamp(target, 0,
-                                    std::max(0, static_cast<int>(popup_.items.size()) - 1));
+      popup_.selection =
+          std::clamp(target, 0, std::max(0, static_cast<int>(popup_.items.size()) - 1));
       dirty_ = true;
       return;
     }
-    if (event.code == 0x51 &&
-        popup_.selection + 1 >= static_cast<int>(popup_.items.size()) &&
+    if (event.code == 0x51 && popup_.selection + 1 >= static_cast<int>(popup_.items.size()) &&
         package_offset_ + kPackagePage < package_total_) {
       load_package_page(package_offset_ + kPackagePage);
       return;
@@ -1422,7 +1467,9 @@ void App::handle_key(const platform::KeyEvent& event) {
   }
 
   switch (event.code) {
-    case 0x2B: cycle_pane(event.ctrl ? -1 : 1); break;
+    case 0x2B:
+      cycle_pane(event.ctrl ? -1 : 1);
+      break;
     case 0x29:
       if (clock_.running()) {
         toggle_clock();
@@ -1435,11 +1482,19 @@ void App::handle_key(const platform::KeyEvent& event) {
       const int delta = event.code == 0x52 ? -1 : 1;
       int limit = 0;
       switch (state_.pane) {
-        case ui::Pane::Devices: limit = state_.midi.size() + state_.msc.size(); break;
+        case ui::Pane::Devices:
+          limit = state_.midi.size() + state_.msc.size();
+          break;
         case ui::Pane::Routes:
-        case ui::Pane::Clock: limit = state_.midi.size(); break;
-        case ui::Pane::Library: limit = state_.local.size() + state_.catalog.size(); break;
-        case ui::Pane::System: limit = 0; break;
+        case ui::Pane::Clock:
+          limit = state_.midi.size();
+          break;
+        case ui::Pane::Library:
+          limit = state_.local.size() + state_.catalog.size();
+          break;
+        case ui::Pane::System:
+          limit = 0;
+          break;
       }
       constexpr std::size_t kLibraryPage = 20;
       constexpr int kLibrarySkip = 5;
@@ -1500,9 +1555,8 @@ void App::handle_key(const platform::KeyEvent& event) {
         if (state_.selection < static_cast<int>(state_.midi.size())) {
           open_packages(state_.midi[static_cast<std::size_t>(state_.selection)].slot);
         } else if (state_.selection >= static_cast<int>(state_.midi.size())) {
-          open_msc_actions(state_.msc[static_cast<std::size_t>(
-                                         state_.selection - state_.midi.size())]
-                               .slot);
+          open_msc_actions(
+              state_.msc[static_cast<std::size_t>(state_.selection - state_.midi.size())].slot);
         }
       } else if (state_.pane == ui::Pane::Routes &&
                  state_.selection < static_cast<int>(state_.midi.size())) {
@@ -1515,8 +1569,8 @@ void App::handle_key(const platform::KeyEvent& event) {
         if (state_.selection >= static_cast<int>(state_.local.size())) {
           const auto index = static_cast<std::size_t>(state_.selection - state_.local.size());
           if (index < state_.catalog.size()) {
-            auto path = library_.package_path(state_.catalog[index].id,
-                                              state_.catalog[index].version);
+            auto path =
+                library_.package_path(state_.catalog[index].id, state_.catalog[index].version);
             if (!path) {
               set_message(path.error().message, true);
             } else {
@@ -1536,7 +1590,6 @@ void App::handle_key(const platform::KeyEvent& event) {
     default:
       break;
   }
-
 
   dirty_ = true;
 }

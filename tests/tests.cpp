@@ -17,22 +17,22 @@
 
 static int failures = 0;
 
-#define CHECK(condition)                                                          \
-  do {                                                                            \
-    if (!(condition)) {                                                           \
-      std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition);            \
-      ++failures;                                                                 \
-    }                                                                             \
+#define CHECK(condition)                                               \
+  do {                                                                 \
+    if (!(condition)) {                                                \
+      std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition); \
+      ++failures;                                                      \
+    }                                                                  \
   } while (false)
 
-#define CHECK_EQ(a, b)                                                            \
-  do {                                                                            \
-    const auto _a = (a);                                                          \
-    const auto _b = (b);                                                          \
-    if (!(_a == _b)) {                                                            \
-      std::printf("FAIL %s:%d: %s != %s\n", __FILE__, __LINE__, #a, #b);          \
-      ++failures;                                                                 \
-    }                                                                             \
+#define CHECK_EQ(a, b)                                                   \
+  do {                                                                   \
+    const auto _a = (a);                                                 \
+    const auto _b = (b);                                                 \
+    if (!(_a == _b)) {                                                   \
+      std::printf("FAIL %s:%d: %s != %s\n", __FILE__, __LINE__, #a, #b); \
+      ++failures;                                                        \
+    }                                                                    \
   } while (false)
 
 namespace {
@@ -114,7 +114,9 @@ void test_request_and_response() {
 struct MemoryReader : fm1::package::Reader {
   explicit MemoryReader(std::vector<uint8_t> data) : bytes(std::move(data)) {}
   std::vector<uint8_t> bytes;
-  uint64_t size() const override { return bytes.size(); }
+  uint64_t size() const override {
+    return bytes.size();
+  }
   fm1::Result<std::size_t> read_at(uint64_t offset, std::span<uint8_t> dst) override {
     if (offset + dst.size() > bytes.size()) return fm1::fail("short");
     std::memcpy(dst.data(), bytes.data() + offset, dst.size());
@@ -125,8 +127,7 @@ struct MemoryReader : fm1::package::Reader {
 std::vector<uint8_t> make_package(std::size_t blocks, std::string_view identity) {
   std::vector<uint8_t> fwsc((blocks + 1) * 0x30 + 64, 0xAA);
   for (std::size_t i = 0; i < blocks; ++i) {
-    const uint8_t marker =
-        i < identity.size() ? static_cast<uint8_t>(identity[i] + i + 1) : 0x7D;
+    const uint8_t marker = i < identity.size() ? static_cast<uint8_t>(identity[i] + i + 1) : 0x7D;
     fwsc[i * 0x30 + 0x2F] = marker;
   }
   fwsc[blocks * 0x30 + 0x2F] = 0xFF;
@@ -262,8 +263,7 @@ void test_wl82_cipher() {
 
 void test_flash_assets() {
   // Bundled m-bootloader files must parse and identify.
-  const std::array<std::string, 2> paths{"data/bootloader-fm1.boot",
-                                         "data/bootloader-smk37.boot"};
+  const std::array<std::string, 2> paths{"data/bootloader-fm1.boot", "data/bootloader-smk37.boot"};
   for (const auto& path : paths) {
     std::FILE* file = std::fopen(path.c_str(), "rb");
     if (file == nullptr) continue;
@@ -295,9 +295,8 @@ void test_catalog() {
     ]
   })";
   std::vector<fm1::catalog::Entry> entries;
-  fm1::catalog::StreamParser parser([&](fm1::catalog::Entry&& entry) {
-    entries.push_back(std::move(entry));
-  });
+  fm1::catalog::StreamParser parser(
+      [&](fm1::catalog::Entry&& entry) { entries.push_back(std::move(entry)); });
   parser.feed(std::span<const char>(json, std::strlen(json)));
   CHECK(parser.finish().has_value());
   CHECK_EQ(entries.size(), 2u);
@@ -327,9 +326,8 @@ void test_catalog() {
   std::string long_json =
       R"({"firmwares":[{"name":"Long","what":")" + std::string(400, 'x') + R"(","kind":"x"}]})";
   std::vector<fm1::catalog::Entry> long_entries;
-  fm1::catalog::StreamParser long_parser([&](fm1::catalog::Entry&& entry) {
-    long_entries.push_back(std::move(entry));
-  });
+  fm1::catalog::StreamParser long_parser(
+      [&](fm1::catalog::Entry&& entry) { long_entries.push_back(std::move(entry)); });
   for (char c : long_json) long_parser.feed(std::span<const char>(&c, 1));
   CHECK(long_parser.finish().has_value());
   CHECK_EQ(long_entries.size(), 1u);
@@ -356,15 +354,14 @@ void test_canvas() {
   static std::size_t pixels = 0;
   static bool sizes_ok = true;
   pixels = 0;
-  canvas.present(nullptr, [](void*, int, int, int width, int height,
-                             std::span<const uint16_t> rgba) {
-    pixels += rgba.size();
-    if (static_cast<int>(rgba.size()) != width * height) sizes_ok = false;
-  });
+  canvas.present(nullptr,
+                 [](void*, int, int, int width, int height, std::span<const uint16_t> rgba) {
+                   pixels += rgba.size();
+                   if (static_cast<int>(rgba.size()) != width * height) sizes_ok = false;
+                 });
   CHECK(sizes_ok);
   CHECK_EQ(pixels, static_cast<std::size_t>(fm1::ui::Canvas::kWidth * fm1::ui::Canvas::kHeight));
 }
-
 
 void test_catalog_zoo() {
   const char* json = R"([
@@ -374,9 +371,8 @@ void test_catalog_zoo() {
      "source_url":"https://example.invalid/src"}
   ])";
   std::vector<fm1::catalog::Entry> entries;
-  fm1::catalog::StreamParser parser([&](fm1::catalog::Entry&& entry) {
-    entries.push_back(std::move(entry));
-  });
+  fm1::catalog::StreamParser parser(
+      [&](fm1::catalog::Entry&& entry) { entries.push_back(std::move(entry)); });
   parser.feed(std::span<const char>(json, std::strlen(json)));
   CHECK(parser.finish().has_value());
   CHECK_EQ(entries.size(), 1u);
@@ -394,7 +390,6 @@ void test_catalog_zoo() {
     CHECK_EQ(fm1::catalog::package_url(e), e.pkg);
   }
 }
-
 
 void test_smk_variant() {
   fm1::catalog::Entry entry;
@@ -417,10 +412,8 @@ void test_smk_variant() {
   CHECK(fm1::catalog::version_at_least("2026.11", "2026.9"));
   CHECK_EQ(fm1::catalog::smk_variant_from_product("SMK-37 Elite_016"),
            fm1::catalog::SmkVariant::Elite);
-  CHECK_EQ(fm1::catalog::smk_variant_from_product("SMK-37 Pro_016"),
-           fm1::catalog::SmkVariant::Pro);
-  CHECK_EQ(fm1::catalog::smk_variant_from_product("MKE-P37_016"),
-           fm1::catalog::SmkVariant::Mke);
+  CHECK_EQ(fm1::catalog::smk_variant_from_product("SMK-37 Pro_016"), fm1::catalog::SmkVariant::Pro);
+  CHECK_EQ(fm1::catalog::smk_variant_from_product("MKE-P37_016"), fm1::catalog::SmkVariant::Mke);
 }
 
 }  // namespace

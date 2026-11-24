@@ -27,7 +27,9 @@ class Display {
   // Draws a fully converted rectangle. Blocks until the SPI transfer is done.
   Result<void> blit(int x, int y, int width, int height, std::span<const uint16_t> pixels);
   void set_backlight(bool on);
-  [[nodiscard]] bool ready() const { return ready_; }
+  [[nodiscard]] bool ready() const {
+    return ready_;
+  }
 
  private:
   Result<void> command(uint8_t command, std::span<const uint8_t> data = {});
@@ -55,7 +57,9 @@ class Keyboard {
   Result<void> init();
   // Non-blocking: returns one event per call.
   std::optional<KeyEvent> poll();
-  [[nodiscard]] bool ready() const { return ready_; }
+  [[nodiscard]] bool ready() const {
+    return ready_;
+  }
 
  private:
   Result<void> write(uint8_t reg, uint8_t value);
@@ -76,7 +80,9 @@ class Keyboard {
 class Storage {
  public:
   Result<void> mount();
-  [[nodiscard]] bool mounted() const { return mounted_; }
+  [[nodiscard]] bool mounted() const {
+    return mounted_;
+  }
   [[nodiscard]] std::string path(std::string_view relative) const;
   Result<std::string> read_text(std::string_view relative, std::size_t limit = 16 * 1024) const;
   Result<void> write_text(std::string_view relative, std::string_view text) const;

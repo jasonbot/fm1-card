@@ -44,7 +44,9 @@ struct Cursor {
   std::span<const uint8_t> bytes;
   std::size_t at = 0;
 
-  bool take(std::size_t count) { return at + count <= bytes.size(); }
+  bool take(std::size_t count) {
+    return at + count <= bytes.size();
+  }
   uint16_t u16() {
     const uint16_t value =
         static_cast<uint16_t>(bytes[at] | (static_cast<uint16_t>(bytes[at + 1]) << 8));
@@ -52,8 +54,7 @@ struct Cursor {
     return value;
   }
   uint32_t u32() {
-    const uint32_t value = static_cast<uint32_t>(u16()) |
-                           (static_cast<uint32_t>(u16()) << 16);
+    const uint32_t value = static_cast<uint32_t>(u16()) | (static_cast<uint32_t>(u16()) << 16);
     return value;
   }
   std::string str() {
@@ -73,9 +74,8 @@ Device device_from_product(std::string_view product) {
 
 bool matches(const Entry& entry, std::string_view needle) {
   if (needle.empty()) return true;
-  const std::string haystack =
-      lower(entry.name + " " + entry.version + " " + entry.tags + " " + entry.author + " " +
-            entry.what + " " + entry.product);
+  const std::string haystack = lower(entry.name + " " + entry.version + " " + entry.tags + " " +
+                                     entry.author + " " + entry.what + " " + entry.product);
   std::size_t at = 0;
   while (at < needle.size()) {
     while (at < needle.size() && std::isspace(static_cast<unsigned char>(needle[at]))) ++at;
@@ -90,8 +90,7 @@ bool matches(const Entry& entry, std::string_view needle) {
 
 bool works_on_new_chip(const Entry& entry) {
   const auto tags = lower(entry.tags);
-  return tags.find("new chip") != std::string::npos ||
-         tags.find("any chip") != std::string::npos;
+  return tags.find("new chip") != std::string::npos || tags.find("any chip") != std::string::npos;
 }
 
 bool works_on_old_chip(const Entry& entry) {
@@ -266,8 +265,7 @@ void StreamParser::end_entry() {
   if (current_.product.empty()) {
     current_.product = current_.device == Device::Smk37 ? "SMK-37" : "FM-1";
   }
-  if (!current_.vintage &&
-      current_.tags.find("vintage") != std::string::npos) {
+  if (!current_.vintage && current_.tags.find("vintage") != std::string::npos) {
     current_.vintage = true;
   }
   ++entries_;
@@ -282,16 +280,26 @@ void StreamParser::append(std::string& target, std::size_t limit, std::string_vi
 }
 
 void StreamParser::commit(std::string_view key) {
-  if (key == "id") current_.id = std::move(field_);
-  else if (key == "name") current_.name = std::move(field_);
-  else if (key == "version") current_.version = std::move(field_);
-  else if (key == "author" || key == "byline") current_.author = std::move(field_);
-  else if (key == "what" || key == "description") current_.what = std::move(field_);
-  else if (key == "product") current_.product = std::move(field_);
-  else if (key == "pkg" || key == "url") current_.pkg = std::move(field_);
-  else if (key == "sha256") current_.sha256 = std::move(field_);
-  else if (key == "site" || key == "website") current_.site = std::move(field_);
-  else if (key == "source" || key == "source_url") current_.source = std::move(field_);
+  if (key == "id")
+    current_.id = std::move(field_);
+  else if (key == "name")
+    current_.name = std::move(field_);
+  else if (key == "version")
+    current_.version = std::move(field_);
+  else if (key == "author" || key == "byline")
+    current_.author = std::move(field_);
+  else if (key == "what" || key == "description")
+    current_.what = std::move(field_);
+  else if (key == "product")
+    current_.product = std::move(field_);
+  else if (key == "pkg" || key == "url")
+    current_.pkg = std::move(field_);
+  else if (key == "sha256")
+    current_.sha256 = std::move(field_);
+  else if (key == "site" || key == "website")
+    current_.site = std::move(field_);
+  else if (key == "source" || key == "source_url")
+    current_.source = std::move(field_);
   else if (key == "device") {
     const auto lower_device = [&] {
       std::string text = field_;
@@ -307,9 +315,12 @@ void StreamParser::commit(std::string_view key) {
       append(current_.tags, kMaxTags, field_);
     }
   } else if (key == "chip") {
-    if (field_ == "new") append(current_.tags, kMaxTags, " new chip");
-    else if (field_ == "any") append(current_.tags, kMaxTags, " any chip");
-    else if (field_ == "old") append(current_.tags, kMaxTags, " old chip");
+    if (field_ == "new")
+      append(current_.tags, kMaxTags, " new chip");
+    else if (field_ == "any")
+      append(current_.tags, kMaxTags, " any chip");
+    else if (field_ == "old")
+      append(current_.tags, kMaxTags, " old chip");
   }
   field_.clear();
 }
@@ -376,8 +387,7 @@ void StreamParser::event(lwjson_stream_type_t type) {
     }
     if (type == LWJSON_STREAM_TYPE_NUMBER) {
       if (key_ == "size") {
-        current_.size = static_cast<uint32_t>(
-            std::strtoul(parser.data.prim.buff, nullptr, 10));
+        current_.size = static_cast<uint32_t>(std::strtoul(parser.data.prim.buff, nullptr, 10));
       }
       return;
     }
@@ -388,8 +398,7 @@ void StreamParser::event(lwjson_stream_type_t type) {
   }
 
   // An array value directly under a field key (kind, tags, devices).
-  if (pos == base_depth_ + 3 &&
-      parser.stack[base_depth_ + 2].type == LWJSON_STREAM_TYPE_ARRAY &&
+  if (pos == base_depth_ + 3 && parser.stack[base_depth_ + 2].type == LWJSON_STREAM_TYPE_ARRAY &&
       is_key(base_depth_ + 1)) {
     if (type == LWJSON_STREAM_TYPE_STRING) {
       const auto& str = parser.data.str;

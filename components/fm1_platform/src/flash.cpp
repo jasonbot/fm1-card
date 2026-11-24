@@ -77,8 +77,7 @@ class MscTransport : public wl82::ScsiTransport {
     }
     return fail("SCSI data-in command failed");
   }
-  Result<std::size_t> out(std::span<const uint8_t> cdb,
-                          std::span<const uint8_t> src) override {
+  Result<std::size_t> out(std::span<const uint8_t> cdb, std::span<const uint8_t> src) override {
     msc_cbw_t cbw{};
     cbw.signature = 0x43425355;
     cbw.tag = slot_;
@@ -144,11 +143,8 @@ Result<void> FlashWorker::start(UsbHost& usb, Storage& storage) {
   usb_ = &usb;
   storage_ = &storage;
   TaskHandle_t handle = nullptr;
-  xTaskCreatePinnedToCore(
-      [](void* arg) {
-        static_cast<FlashWorker*>(arg)->loop();
-      },
-      "fm1-flash", 8192, this, 3, &handle, 1);
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<FlashWorker*>(arg)->loop(); }, "fm1-flash",
+                          8192, this, 3, &handle, 1);
   task_ = handle;
   return {};
 }
@@ -218,8 +214,12 @@ void FlashWorker::loop() {
 void FlashWorker::run(const FlashJob& job) {
   Result<void> result;
   switch (job.kind) {
-    case FlashKind::Normal: result = normal(job); break;
-    case FlashKind::Rescue: result = rescue(job); break;
+    case FlashKind::Normal:
+      result = normal(job);
+      break;
+    case FlashKind::Rescue:
+      result = rescue(job);
+      break;
     case FlashKind::DownloadMode: {
       auto port = usb_->midi_port(job.slot);
       if (!port) {
@@ -231,8 +231,12 @@ void FlashWorker::run(const FlashJob& job) {
       }
       break;
     }
-    case FlashKind::InstallBootloader: result = install_bootloader(job); break;
-    case FlashKind::Backup: result = backup(job); break;
+    case FlashKind::InstallBootloader:
+      result = install_bootloader(job);
+      break;
+    case FlashKind::Backup:
+      result = backup(job);
+      break;
   }
   if (!result) {
     publish(result.error().message, -1, true);
@@ -268,8 +272,7 @@ Result<void> FlashWorker::normal(const FlashJob& job) {
   publish("staging the update loader", 0);
   const auto stage_finish = std::array<uint32_t, 1>{fm1::midi::kFinishStage};
   auto stage = update::serve(
-      image,
-      [&](std::chrono::milliseconds timeout) { return usb_->read_sysex(job.slot, timeout); },
+      image, [&](std::chrono::milliseconds timeout) { return usb_->read_sysex(job.slot, timeout); },
       [&](std::span<const uint8_t> sysex) { return usb_->send_sysex(job.slot, sysex); },
       [&](std::size_t done, std::size_t total) {
         publish("staging the update loader",
@@ -304,12 +307,8 @@ Result<void> FlashWorker::normal(const FlashJob& job) {
   const auto write_finish = std::array<uint32_t, 1>{fm1::midi::kFinishWrite};
   auto write = update::serve(
       image,
-      [&](std::chrono::milliseconds timeout) {
-        return usb_->read_sysex(loader->slot, timeout);
-      },
-      [&](std::span<const uint8_t> sysex) {
-        return usb_->send_sysex(loader->slot, sysex);
-      },
+      [&](std::chrono::milliseconds timeout) { return usb_->read_sysex(loader->slot, timeout); },
+      [&](std::span<const uint8_t> sysex) { return usb_->send_sysex(loader->slot, sysex); },
       [&](std::size_t done, std::size_t total) {
         publish("writing the flash",
                 static_cast<int>(done * 100 / std::max<std::size_t>(total, 1)));
@@ -359,8 +358,7 @@ Result<void> FlashWorker::rescue(const FlashJob& job) {
   publish("waiting for the device to pull the update", 0);
   const auto both = std::array<uint32_t, 2>{fm1::midi::kFinishStage, fm1::midi::kFinishWrite};
   auto served = update::serve(
-      image,
-      [&](std::chrono::milliseconds timeout) { return usb_->read_sysex(job.slot, timeout); },
+      image, [&](std::chrono::milliseconds timeout) { return usb_->read_sysex(job.slot, timeout); },
       [&](std::span<const uint8_t> sysex) { return usb_->send_sysex(job.slot, sysex); },
       [&](std::size_t done, std::size_t total) {
         publish("serving the image",
@@ -393,12 +391,8 @@ Result<void> FlashWorker::rescue(const FlashJob& job) {
   const auto write_finish = std::array<uint32_t, 1>{fm1::midi::kFinishWrite};
   auto write = update::serve(
       image,
-      [&](std::chrono::milliseconds timeout) {
-        return usb_->read_sysex(loader->slot, timeout);
-      },
-      [&](std::span<const uint8_t> sysex) {
-        return usb_->send_sysex(loader->slot, sysex);
-      },
+      [&](std::chrono::milliseconds timeout) { return usb_->read_sysex(loader->slot, timeout); },
+      [&](std::span<const uint8_t> sysex) { return usb_->send_sysex(loader->slot, sysex); },
       [&](std::size_t done, std::size_t total) {
         publish("writing the flash",
                 static_cast<int>(done * 100 / std::max<std::size_t>(total, 1)));
@@ -443,8 +437,7 @@ Result<void> FlashWorker::backup(const FlashJob& job) {
       return fail("short write to the backup");
     }
     crc = crc32_update(crc, *chunk);
-    publish("reading the flash",
-            static_cast<int>((at + chunk->size()) * 100 / wl82::kFlashSize));
+    publish("reading the flash", static_cast<int>((at + chunk->size()) * 100 / wl82::kFlashSize));
   }
   std::fflush(file);
   std::fclose(file);

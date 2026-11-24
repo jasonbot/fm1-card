@@ -69,7 +69,9 @@ struct UiState {
 class Ui {
  public:
   void draw(const UiState& state);
-  Canvas& canvas() { return canvas_; }
+  Canvas& canvas() {
+    return canvas_;
+  }
 
  private:
   void header(const UiState& state);

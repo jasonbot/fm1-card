@@ -20,12 +20,12 @@ int main() {
   entry.tags = "synth";
   entry.product = "FM-1_900";
 
-  auto written = fm1::platform::write_local_metadata(path, "local:demo", "abc", sizeof(data),
-                                                     &entry);
+  auto written =
+      fm1::platform::write_local_metadata(path, "local:demo", "abc", sizeof(data), &entry);
   if (!written) return 2;
   auto meta = fm1::platform::read_local_metadata(path);
-  if (!meta.valid || meta.name != "Demo" || meta.author != "Ada" ||
-      meta.version != "1.2" || meta.product != "FM-1_900" || meta.size != sizeof(data)) {
+  if (!meta.valid || meta.name != "Demo" || meta.author != "Ada" || meta.version != "1.2" ||
+      meta.product != "FM-1_900" || meta.size != sizeof(data)) {
     return 3;
   }
   std::remove(path);

@@ -84,22 +84,62 @@ constexpr uint8_t kKeyShift = 0x81;
 constexpr uint8_t kKeyAlt = 0x82;
 
 constexpr KeyDef kKeys[4][14] = {
-    {{'`', '~', kKeyEscape}, {'1', '!', 0x3A}, {'2', '@', 0x3B}, {'3', '#', 0x3C},
-     {'4', '$', 0x3D}, {'5', '%', 0x3E}, {'6', '^', 0x3F}, {'7', '&', 0x40},
-     {'8', '*', 0x41}, {'9', '(', 0x42}, {'0', ')', 0x43}, {'-', '_', 0x44},
-     {'=', '+', 0x45}, {0, 0, kKeyBackspace}},
-    {{0, 0, kKeyTab}, {'q', 'Q', 0}, {'w', 'W', 0}, {'e', 'E', 0},
-     {'r', 'R', 0}, {'t', 'T', 0}, {'y', 'Y', 0}, {'u', 'U', 0},
-     {'i', 'I', 0}, {'o', 'O', 0}, {'p', 'P', 0}, {'[', '{', 0},
-     {']', '}', 0}, {'\\', '|', 0}},
-    {{0, 0, kKeyFn}, {0, 0, kKeyShift}, {'a', 'A', 0}, {'s', 'S', 0},
-     {'d', 'D', 0}, {'f', 'F', 0}, {'g', 'G', 0}, {'h', 'H', 0},
-     {'j', 'J', 0}, {'k', 'K', 0}, {'l', 'L', 0}, {';', ':', kKeyUp},
-     {'\'', '"', 0}, {0, 0, kKeyEnter}},
-    {{0, 0, kKeyCtrl}, {0, 0, 0}, {0, 0, kKeyAlt}, {'z', 'Z', 0},
-     {'x', 'X', 0}, {'c', 'C', 0}, {'v', 'V', 0}, {'b', 'B', 0},
-     {'n', 'N', 0}, {'m', 'M', 0}, {',', '<', kKeyLeft}, {'.', '>', kKeyDown},
-     {'/', '?', kKeyRight}, {' ', ' ', 0}},
+    {{'`', '~', kKeyEscape},
+     {'1', '!', 0x3A},
+     {'2', '@', 0x3B},
+     {'3', '#', 0x3C},
+     {'4', '$', 0x3D},
+     {'5', '%', 0x3E},
+     {'6', '^', 0x3F},
+     {'7', '&', 0x40},
+     {'8', '*', 0x41},
+     {'9', '(', 0x42},
+     {'0', ')', 0x43},
+     {'-', '_', 0x44},
+     {'=', '+', 0x45},
+     {0, 0, kKeyBackspace}},
+    {{0, 0, kKeyTab},
+     {'q', 'Q', 0},
+     {'w', 'W', 0},
+     {'e', 'E', 0},
+     {'r', 'R', 0},
+     {'t', 'T', 0},
+     {'y', 'Y', 0},
+     {'u', 'U', 0},
+     {'i', 'I', 0},
+     {'o', 'O', 0},
+     {'p', 'P', 0},
+     {'[', '{', 0},
+     {']', '}', 0},
+     {'\\', '|', 0}},
+    {{0, 0, kKeyFn},
+     {0, 0, kKeyShift},
+     {'a', 'A', 0},
+     {'s', 'S', 0},
+     {'d', 'D', 0},
+     {'f', 'F', 0},
+     {'g', 'G', 0},
+     {'h', 'H', 0},
+     {'j', 'J', 0},
+     {'k', 'K', 0},
+     {'l', 'L', 0},
+     {';', ':', kKeyUp},
+     {'\'', '"', 0},
+     {0, 0, kKeyEnter}},
+    {{0, 0, kKeyCtrl},
+     {0, 0, 0},
+     {0, 0, kKeyAlt},
+     {'z', 'Z', 0},
+     {'x', 'X', 0},
+     {'c', 'C', 0},
+     {'v', 'V', 0},
+     {'b', 'B', 0},
+     {'n', 'N', 0},
+     {'m', 'M', 0},
+     {',', '<', kKeyLeft},
+     {'.', '>', kKeyDown},
+     {'/', '?', kKeyRight},
+     {' ', ' ', 0}},
 };
 
 bool on_color_done(esp_lcd_panel_io_handle_t, esp_lcd_panel_io_event_data_t*, void* ctx) {
@@ -156,8 +196,7 @@ Result<void> Display::init() {
   io_config.user_ctx = done_;
   io_config.lcd_cmd_bits = 8;
   io_config.lcd_param_bits = 8;
-  err = check(esp_lcd_new_panel_io_spi(static_cast<esp_lcd_spi_bus_handle_t>(SPI2_HOST),
-                                       &io_config,
+  err = check(esp_lcd_new_panel_io_spi(static_cast<esp_lcd_spi_bus_handle_t>(SPI2_HOST), &io_config,
                                        reinterpret_cast<esp_lcd_panel_io_handle_t*>(&io_)),
               "lcd panel io");
   if (!err) return err;
@@ -181,10 +220,14 @@ Result<void> Display::init() {
   if (auto r = cmd(0xC4, {0x20}); !r) return r;
   if (auto r = cmd(0xC6, {0x0F}); !r) return r;
   if (auto r = cmd(0xD0, {0xA4, 0xA1}); !r) return r;
-  if (auto r = cmd(0xE0, {0xD0, 0x04, 0x0D, 0x11, 0x13, 0x2B, 0x3F, 0x54,
-                          0x4C, 0x18, 0x0D, 0x0B, 0x1F, 0x23}); !r) return r;
-  if (auto r = cmd(0xE1, {0xD0, 0x04, 0x0C, 0x11, 0x13, 0x2C, 0x3F, 0x44,
-                          0x51, 0x2F, 0x1F, 0x1F, 0x20, 0x23}); !r) return r;
+  if (auto r = cmd(0xE0, {0xD0, 0x04, 0x0D, 0x11, 0x13, 0x2B, 0x3F, 0x54, 0x4C, 0x18, 0x0D, 0x0B,
+                          0x1F, 0x23});
+      !r)
+    return r;
+  if (auto r = cmd(0xE1, {0xD0, 0x04, 0x0C, 0x11, 0x13, 0x2C, 0x3F, 0x44, 0x51, 0x2F, 0x1F, 0x1F,
+                          0x20, 0x23});
+      !r)
+    return r;
   if (auto r = cmd(0x13); !r) return r;  // normal display
   vTaskDelay(pdMS_TO_TICKS(10));
   if (auto r = cmd(0x29); !r) return r;  // display on
@@ -196,8 +239,8 @@ Result<void> Display::init() {
 }
 
 Result<void> Display::command(uint8_t command, std::span<const uint8_t> data) {
-  return check(esp_lcd_panel_io_tx_param(reinterpret_cast<esp_lcd_panel_io_handle_t>(io_),
-                                         command, data.data(), data.size()),
+  return check(esp_lcd_panel_io_tx_param(reinterpret_cast<esp_lcd_panel_io_handle_t>(io_), command,
+                                         data.data(), data.size()),
                "lcd command");
 }
 
@@ -208,27 +251,24 @@ Result<void> Display::set_window(int x, int y, int width, int height) {
   const int x1 = x + width - 1 + kOffsetX;
   const int y0 = y + kOffsetY;
   const int y1 = y + height - 1 + kOffsetY;
-  const std::array<uint8_t, 4> columns{
-      static_cast<uint8_t>(x0 >> 8), static_cast<uint8_t>(x0),
-      static_cast<uint8_t>(x1 >> 8), static_cast<uint8_t>(x1)};
-  const std::array<uint8_t, 4> rows{
-      static_cast<uint8_t>(y0 >> 8), static_cast<uint8_t>(y0),
-      static_cast<uint8_t>(y1 >> 8), static_cast<uint8_t>(y1)};
+  const std::array<uint8_t, 4> columns{static_cast<uint8_t>(x0 >> 8), static_cast<uint8_t>(x0),
+                                       static_cast<uint8_t>(x1 >> 8), static_cast<uint8_t>(x1)};
+  const std::array<uint8_t, 4> rows{static_cast<uint8_t>(y0 >> 8), static_cast<uint8_t>(y0),
+                                    static_cast<uint8_t>(y1 >> 8), static_cast<uint8_t>(y1)};
   if (auto r = command(0x2A, columns); !r) return r;
   if (auto r = command(0x2B, rows); !r) return r;
   return command(0x2C);
 }
 
-Result<void> Display::blit(int x, int y, int width, int height,
-                           std::span<const uint16_t> pixels) {
+Result<void> Display::blit(int x, int y, int width, int height, std::span<const uint16_t> pixels) {
   if (!ready_) return fail("display is not ready");
   if (pixels.size() < static_cast<std::size_t>(width * height)) {
     return fail("display blit buffer too small");
   }
   if (auto r = set_window(x, y, width, height); !r) return r;
   xSemaphoreTake(static_cast<SemaphoreHandle_t>(done_), 0);
-  auto err = check(esp_lcd_panel_io_tx_color(reinterpret_cast<esp_lcd_panel_io_handle_t>(io_),
-                                             -1, pixels.data(), pixels.size() * 2),
+  auto err = check(esp_lcd_panel_io_tx_color(reinterpret_cast<esp_lcd_panel_io_handle_t>(io_), -1,
+                                             pixels.data(), pixels.size() * 2),
                    "lcd color");
   if (!err) return err;
   if (xSemaphoreTake(static_cast<SemaphoreHandle_t>(done_), pdMS_TO_TICKS(1000)) != pdTRUE) {
@@ -249,19 +289,19 @@ Result<void> Keyboard::init() {
   bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
   bus_config.glitch_ignore_cnt = 7;
   bus_config.flags.enable_internal_pullup = true;
-  auto err = check(i2c_new_master_bus(&bus_config,
-                                      reinterpret_cast<i2c_master_bus_handle_t*>(&bus_)),
-                   "keyboard i2c");
+  auto err =
+      check(i2c_new_master_bus(&bus_config, reinterpret_cast<i2c_master_bus_handle_t*>(&bus_)),
+            "keyboard i2c");
   if (!err) return err;
 
   i2c_device_config_t device_config{};
   device_config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
   device_config.device_address = kTcaAddress;
   device_config.scl_speed_hz = 400'000;
-  err = check(i2c_master_bus_add_device(reinterpret_cast<i2c_master_bus_handle_t>(bus_),
-                                        &device_config,
-                                        reinterpret_cast<i2c_master_dev_handle_t*>(&device_)),
-              "keyboard device");
+  err = check(
+      i2c_master_bus_add_device(reinterpret_cast<i2c_master_bus_handle_t>(bus_), &device_config,
+                                reinterpret_cast<i2c_master_dev_handle_t*>(&device_)),
+      "keyboard device");
   if (!err) return err;
 
   // All pins inputs, all pins event-mode, falling edge, interrupts on.
@@ -301,16 +341,15 @@ Result<void> Keyboard::init() {
 
 Result<void> Keyboard::write(uint8_t reg, uint8_t value) {
   const std::array<uint8_t, 2> bytes{reg, value};
-  return check(i2c_master_transmit(reinterpret_cast<i2c_master_dev_handle_t>(device_),
-                                   bytes.data(), bytes.size(), 50),
+  return check(i2c_master_transmit(reinterpret_cast<i2c_master_dev_handle_t>(device_), bytes.data(),
+                                   bytes.size(), 50),
                "keyboard write");
 }
 
 Result<uint8_t> Keyboard::read(uint8_t reg) {
   uint8_t value = 0;
-  auto err = check(i2c_master_transmit_receive(
-                       reinterpret_cast<i2c_master_dev_handle_t>(device_), &reg, 1, &value, 1,
-                       50),
+  auto err = check(i2c_master_transmit_receive(reinterpret_cast<i2c_master_dev_handle_t>(device_),
+                                               &reg, 1, &value, 1, 50),
                    "keyboard read");
   if (!err) return std::unexpected(err.error());
   return value;
@@ -348,11 +387,20 @@ void Keyboard::apply(uint8_t event) {
     if (pressed_[row][col]) return;
     pressed_[row][col] = true;
     switch (def.special) {
-      case kKeyShift: shift_ = true; break;
-      case kKeyCtrl: ctrl_ = true; break;
-      case kKeyAlt: alt_ = true; break;
-      case kKeyFn: fn_ = true; break;
-      default: break;
+      case kKeyShift:
+        shift_ = true;
+        break;
+      case kKeyCtrl:
+        ctrl_ = true;
+        break;
+      case kKeyAlt:
+        alt_ = true;
+        break;
+      case kKeyFn:
+        fn_ = true;
+        break;
+      default:
+        break;
     }
     KeyEvent out{};
     out.kind = KeyKind::Press;
@@ -380,11 +428,20 @@ void Keyboard::apply(uint8_t event) {
     out.character = shift_ ? def.shifted : def.normal;
     out.code = def.special;
     switch (def.special) {
-      case kKeyShift: shift_ = false; break;
-      case kKeyCtrl: ctrl_ = false; break;
-      case kKeyAlt: alt_ = false; break;
-      case kKeyFn: fn_ = false; break;
-      default: break;
+      case kKeyShift:
+        shift_ = false;
+        break;
+      case kKeyCtrl:
+        ctrl_ = false;
+        break;
+      case kKeyAlt:
+        alt_ = false;
+        break;
+      case kKeyFn:
+        fn_ = false;
+        break;
+      default:
+        break;
     }
     next_event_ = out;
   }
@@ -415,8 +472,7 @@ Result<void> Storage::mount() {
   slot.gpio_wp = GPIO_NUM_NC;
   slot.gpio_int = GPIO_NUM_NC;
   sdmmc_card_t* card = nullptr;
-  err = check(esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot, &mount_config, &card),
-              "sd mount");
+  err = check(esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot, &mount_config, &card), "sd mount");
   if (!err) return err;
   mounted_ = true;
   ESP_LOGI(kTag, "SD mounted at /sdcard");
@@ -471,9 +527,8 @@ Result<void> Storage::ensure_dir(std::string_view relative) const {
   std::size_t at = 0;
   while (at <= relative.size()) {
     const auto slash = relative.find('/', at);
-    const auto part = relative.substr(at, slash == std::string_view::npos
-                                              ? std::string_view::npos
-                                              : slash - at);
+    const auto part =
+        relative.substr(at, slash == std::string_view::npos ? std::string_view::npos : slash - at);
     if (!part.empty()) {
       current.push_back('/');
       current.append(part);
@@ -488,7 +543,7 @@ Result<void> Storage::ensure_dir(std::string_view relative) const {
 }
 
 uint64_t Storage::free_bytes() const {
-  struct statvfs info {};
+  struct statvfs info{};
   if (statvfs("/sdcard", &info) != 0) return 0;
   return static_cast<uint64_t>(info.f_bavail) * info.f_frsize;
 }

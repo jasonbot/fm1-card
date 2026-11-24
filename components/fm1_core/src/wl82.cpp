@@ -9,9 +9,8 @@
 namespace fm1::wl82 {
 namespace {
 
-constexpr std::array<uint8_t, 16> kMagic{
-    0xC3, 0xCF, 0xC0, 0xE8, 0xCE, 0xD2, 0xB0, 0xAE,
-    0xC4, 0xE3, 0xA3, 0xAC, 0xD3, 0xF1, 0xC1, 0xD6};
+constexpr std::array<uint8_t, 16> kMagic{0xC3, 0xCF, 0xC0, 0xE8, 0xCE, 0xD2, 0xB0, 0xAE,
+                                         0xC4, 0xE3, 0xA3, 0xAC, 0xD3, 0xF1, 0xC1, 0xD6};
 
 uint16_t crc16_update(uint16_t crc, std::span<const uint8_t> bytes) {
   for (uint8_t byte : bytes) {
@@ -57,10 +56,11 @@ Result<T> retry(const LogFn& log, std::function<Result<T>()> action) {
   return std::unexpected(*last);
 }
 
-
 }  // namespace
 
-uint16_t crc16(std::span<const uint8_t> bytes) { return crc16_update(0, bytes); }
+uint16_t crc16(std::span<const uint8_t> bytes) {
+  return crc16_update(0, bytes);
+}
 
 uint32_t crc32(std::span<const uint8_t> bytes) {
   std::array<uint32_t, 256> table{};
@@ -124,8 +124,7 @@ Result<std::pair<std::string, std::string>> inquiry(ScsiTransport& transport) {
                    text(std::span<const uint8_t>(response).subspan(16, 16))};
 }
 
-Result<std::array<uint8_t, 14>> Loader::call(uint16_t command,
-                                             std::span<const uint8_t> args) {
+Result<std::array<uint8_t, 14>> Loader::call(uint16_t command, std::span<const uint8_t> args) {
   const auto packet = cdb(command, args);
   std::array<uint8_t, 16> answer{};
   auto got = retry<std::size_t>(log_, [&] { return transport_.in(packet, answer); });
@@ -211,8 +210,8 @@ Result<void> Loader::open(std::span<const uint8_t> loader_image) {
   if (!key_answer) {
     return std::unexpected(key_answer.error());
   }
-  const uint16_t raw_key = static_cast<uint16_t>(
-      (*key_answer)[4] | (static_cast<uint16_t>((*key_answer)[5]) << 8));
+  const uint16_t raw_key =
+      static_cast<uint16_t>((*key_answer)[4] | (static_cast<uint16_t>((*key_answer)[5]) << 8));
   const std::array<uint8_t, 2> key_bytes{static_cast<uint8_t>(raw_key),
                                          static_cast<uint8_t>(raw_key >> 8)};
   const auto mixed = cipher(key_bytes, 0xFFFF'FFFF);
@@ -222,8 +221,7 @@ Result<void> Loader::open(std::span<const uint8_t> loader_image) {
   if (!online) {
     return std::unexpected(online.error());
   }
-  flash_id_ = static_cast<uint32_t>((*online)[2]) |
-              (static_cast<uint32_t>((*online)[3]) << 8) |
+  flash_id_ = static_cast<uint32_t>((*online)[2]) | (static_cast<uint32_t>((*online)[3]) << 8) |
               (static_cast<uint32_t>((*online)[4]) << 16) |
               (static_cast<uint32_t>((*online)[5]) << 24);
 
@@ -256,9 +254,8 @@ Result<std::vector<uint8_t>> Loader::read(uint32_t address, std::size_t length) 
     args[4] = static_cast<uint8_t>(chunk >> 8);
     args[5] = static_cast<uint8_t>(chunk);
     const auto packet = cdb(kReadFlash, args);
-    auto got = retry<std::size_t>(log_, [&] {
-      return transport_.in(packet, std::span<uint8_t>(out.data() + done, chunk));
-    });
+    auto got = retry<std::size_t>(
+        log_, [&] { return transport_.in(packet, std::span<uint8_t>(out.data() + done, chunk)); });
     if (!got) {
       return std::unexpected(got.error());
     }
@@ -276,10 +273,9 @@ Result<void> Loader::erase(uint32_t address, std::size_t length) {
   while (at < end) {
     const bool block = (at % 0x10000 == 0) && (end - at >= 0x10000);
     const uint32_t size = block ? 0x10000 : 0x1000;
-    const auto args = std::array<uint8_t, 4>{static_cast<uint8_t>(at >> 24),
-                                             static_cast<uint8_t>(at >> 16),
-                                             static_cast<uint8_t>(at >> 8),
-                                             static_cast<uint8_t>(at)};
+    const auto args =
+        std::array<uint8_t, 4>{static_cast<uint8_t>(at >> 24), static_cast<uint8_t>(at >> 16),
+                               static_cast<uint8_t>(at >> 8), static_cast<uint8_t>(at)};
     auto result = call(block ? kEraseBlock : kEraseSector, args);
     if (!result) {
       return std::unexpected(result.error());
@@ -319,10 +315,8 @@ Result<uint32_t> Loader::crc32_of(uint32_t address, std::size_t length) {
   if (!answer) {
     return std::unexpected(answer.error());
   }
-  return (static_cast<uint32_t>((*answer)[0]) << 24) |
-         (static_cast<uint32_t>((*answer)[1]) << 16) |
-         (static_cast<uint32_t>((*answer)[2]) << 8) |
-         static_cast<uint32_t>((*answer)[3]);
+  return (static_cast<uint32_t>((*answer)[0]) << 24) | (static_cast<uint32_t>((*answer)[1]) << 16) |
+         (static_cast<uint32_t>((*answer)[2]) << 8) | static_cast<uint32_t>((*answer)[3]);
 }
 
 }  // namespace fm1::wl82

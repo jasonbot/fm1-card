@@ -7,7 +7,9 @@ namespace {
 
 constexpr std::size_t kSysexLimit = 8192;
 
-bool is_status(uint8_t byte) { return (byte & 0x80) != 0; }
+bool is_status(uint8_t byte) {
+  return (byte & 0x80) != 0;
+}
 
 }  // namespace
 
@@ -166,8 +168,7 @@ std::optional<std::string> parse_identity(std::span<const uint8_t> sysex) {
     return std::nullopt;
   }
   const auto unpacked = unpack7(sysex.subspan(1, sysex.size() - 2));
-  if (unpacked.size() != 34 || unpacked[0] != 0 || unpacked[1] != 0x59 ||
-      unpacked[2] != 0x11) {
+  if (unpacked.size() != 34 || unpacked[0] != 0 || unpacked[1] != 0x59 || unpacked[2] != 0x11) {
     return std::nullopt;
   }
   std::string text;
@@ -186,8 +187,7 @@ std::optional<Request> parse_request(std::span<const uint8_t> sysex) {
     return std::nullopt;
   }
   const auto unpacked = unpack7(sysex.subspan(1, sysex.size() - 2));
-  if (unpacked.size() != 15 || unpacked[0] != 0 || unpacked[1] != 0x59 ||
-      unpacked[2] != 0x30) {
+  if (unpacked.size() != 15 || unpacked[0] != 0 || unpacked[1] != 0x59 || unpacked[2] != 0x30) {
     return std::nullopt;
   }
   uint32_t sum = 0;
@@ -199,12 +199,10 @@ std::optional<Request> parse_request(std::span<const uint8_t> sysex) {
   }
   return Request{
       .flag = unpacked[6],
-      .address = static_cast<uint32_t>(unpacked[7]) |
-                 (static_cast<uint32_t>(unpacked[8]) << 8) |
+      .address = static_cast<uint32_t>(unpacked[7]) | (static_cast<uint32_t>(unpacked[8]) << 8) |
                  (static_cast<uint32_t>(unpacked[9]) << 16) |
                  (static_cast<uint32_t>(unpacked[10]) << 24),
-      .length = static_cast<uint32_t>(unpacked[11]) |
-                (static_cast<uint32_t>(unpacked[12]) << 8) |
+      .length = static_cast<uint32_t>(unpacked[11]) | (static_cast<uint32_t>(unpacked[12]) << 8) |
                 (static_cast<uint32_t>(unpacked[13]) << 16),
   };
 }
@@ -213,23 +211,22 @@ std::vector<uint8_t> response(uint32_t address, std::span<const uint8_t> data, u
   const std::size_t length = data.size();
   std::vector<uint8_t> body;
   body.reserve(15 + length);
-  body.insert(body.end(),
-              {
-                  0x00,
-                  0x59,
-                  0x30,
-                  static_cast<uint8_t>((length + 8) & 0xFF),
-                  static_cast<uint8_t>(((length + 8) >> 8) & 0xFF),
-                  0,
-                  flag,
-                  static_cast<uint8_t>(address & 0xFF),
-                  static_cast<uint8_t>((address >> 8) & 0xFF),
-                  static_cast<uint8_t>((address >> 16) & 0xFF),
-                  static_cast<uint8_t>((address >> 24) & 0xFF),
-                  static_cast<uint8_t>(length & 0xFF),
-                  static_cast<uint8_t>((length >> 8) & 0xFF),
-                  0,
-              });
+  body.insert(body.end(), {
+                              0x00,
+                              0x59,
+                              0x30,
+                              static_cast<uint8_t>((length + 8) & 0xFF),
+                              static_cast<uint8_t>(((length + 8) >> 8) & 0xFF),
+                              0,
+                              flag,
+                              static_cast<uint8_t>(address & 0xFF),
+                              static_cast<uint8_t>((address >> 8) & 0xFF),
+                              static_cast<uint8_t>((address >> 16) & 0xFF),
+                              static_cast<uint8_t>((address >> 24) & 0xFF),
+                              static_cast<uint8_t>(length & 0xFF),
+                              static_cast<uint8_t>((length >> 8) & 0xFF),
+                              0,
+                          });
   body.insert(body.end(), data.begin(), data.end());
   uint32_t sum = 0;
   for (std::size_t i = 6; i < body.size(); ++i) {

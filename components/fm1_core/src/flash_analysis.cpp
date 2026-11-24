@@ -13,11 +13,10 @@ namespace {
 constexpr std::size_t kConfigKey = 34;
 constexpr std::size_t kConfigSize = kBootArea - kConfigAt;
 constexpr std::array<uint8_t, kConfigSize - kConfigKey> kConfigSettings{
-    0x04, 'O',  'S',  'C',  0x00, 'O',  'S',  'C',  '0',
-    0x04, 'O',  'S',  'C',  '_',  'F',  'R',  'E',  'Q',  0x00, 0x00, 0x36, 0x6E, 0x01,
-    0x04, 'S',  'Y',  'S',  '_',  'C',  'L',  'K',  0x00, 0x00, 0x2A, 0x75, 0x15,
-    0x04, 'H',  'S',  'B',  '_',  'D',  'I',  'V',  0x00, 0x01, 0x00, 0x00, 0x00,
-    0x04, 'L',  'S',  'B',  '_',  'D',  'I',  'V',  0x00, 0x02, 0x00, 0x00, 0x00,
+    0x04, 'O',  'S',  'C',  0x00, 'O',  'S',  'C',  '0', 0x04, 'O',  'S',  'C',  '_',  'F',  'R',
+    'E',  'Q',  0x00, 0x00, 0x36, 0x6E, 0x01, 0x04, 'S', 'Y',  'S',  '_',  'C',  'L',  'K',  0x00,
+    0x00, 0x2A, 0x75, 0x15, 0x04, 'H',  'S',  'B',  '_', 'D',  'I',  'V',  0x00, 0x01, 0x00, 0x00,
+    0x00, 0x04, 'L',  'S',  'B',  '_',  'D',  'I',  'V', 0x00, 0x02, 0x00, 0x00, 0x00,
 };
 
 uint16_t u16le(std::span<const uint8_t> bytes, std::size_t at) {
@@ -80,8 +79,8 @@ Entry entry(std::span<const uint8_t> raw) {
   result.address = u32le(result.raw, 4);
   result.length = u32le(result.raw, 8);
   result.name = cstr(std::span<const uint8_t>(result.raw).subspan(16, 16));
-  result.valid = wl82::crc16(std::span<const uint8_t>(result.raw).subspan(2)) ==
-                 u16le(result.raw, 0);
+  result.valid =
+      wl82::crc16(std::span<const uint8_t>(result.raw).subspan(2)) == u16le(result.raw, 0);
   return result;
 }
 
@@ -156,10 +155,9 @@ bool contains(std::span<const uint8_t> haystack, std::span<const uint8_t> needle
          haystack.end();
 }
 
-std::vector<std::pair<std::string, std::string>> identity_texts(
-    std::span<const uint8_t> bytes) {
-  static constexpr std::array<std::string_view, 5> kModels{
-      "FM-1", "MiniFM", "SMK-37 Pro", "SMK-37 Elite", "SMK-37+VA"};
+std::vector<std::pair<std::string, std::string>> identity_texts(std::span<const uint8_t> bytes) {
+  static constexpr std::array<std::string_view, 5> kModels{"FM-1", "MiniFM", "SMK-37 Pro",
+                                                           "SMK-37 Elite", "SMK-37+VA"};
   std::vector<std::pair<std::string, std::string>> found;
   for (const auto model : kModels) {
     for (std::size_t at = 0; at + model.size() + 4 <= bytes.size(); ++at) {
@@ -168,8 +166,7 @@ std::vector<std::pair<std::string, std::string>> identity_texts(
         const auto digits = bytes.subspan(at + model.size() + 1, 3);
         if (std::all_of(digits.begin(), digits.end(),
                         [](uint8_t byte) { return byte >= '0' && byte <= '9'; })) {
-          found.push_back({std::string(model),
-                           std::string(digits.begin(), digits.end())});
+          found.push_back({std::string(model), std::string(digits.begin(), digits.end())});
         }
       }
     }
@@ -177,11 +174,9 @@ std::vector<std::pair<std::string, std::string>> identity_texts(
   return found;
 }
 
-std::optional<std::string> after_version(std::span<const uint8_t> bytes,
-                                         std::string_view prefix) {
+std::optional<std::string> after_version(std::span<const uint8_t> bytes, std::string_view prefix) {
   for (std::size_t at = 0; at + prefix.size() < bytes.size(); ++at) {
-    if (std::equal(prefix.begin(), prefix.end(),
-                   bytes.begin() + static_cast<std::ptrdiff_t>(at))) {
+    if (std::equal(prefix.begin(), prefix.end(), bytes.begin() + static_cast<std::ptrdiff_t>(at))) {
       const std::size_t start = at + prefix.size();
       std::size_t end = start;
       while (end < bytes.size() &&
@@ -235,13 +230,13 @@ Analysis analyze(std::span<const uint8_t> flash, uint32_t flash_id, uint16_t chi
     result.board_key = "smk37";
   }
   result.model_known = !result.board_key.empty();
-  result.model = result.board_key == "fm1"   ? "FM-1"
+  result.model = result.board_key == "fm1"     ? "FM-1"
                  : result.board_key == "smk37" ? "SMK-37 Pro / Elite"
                                                : "unknown";
-  result.bootloader = identity ? "open bootloader " + identity->second + " (" +
-                                     identity->first + ")"
-                     : boot     ? "stock"
-                                : "unreadable";
+  result.bootloader = identity
+                          ? "open bootloader " + identity->second + " (" + identity->first + ")"
+                      : boot ? "stock"
+                             : "unreadable";
 
   const auto app_entry = std::find_if(table.begin(), table.end(),
                                       [](const Entry& item) { return item.name == "app.bin"; });
@@ -257,8 +252,8 @@ Analysis analyze(std::span<const uint8_t> flash, uint32_t flash_id, uint16_t chi
   });
   if (const auto sloop = after_version(text, "SLOOP ")) {
     result.firmware = "SLOOP " + *sloop;
-  } else if (contains(text, std::span<const uint8_t>(
-                                reinterpret_cast<const uint8_t*>("Felucca"), 7))) {
+  } else if (contains(text,
+                      std::span<const uint8_t>(reinterpret_cast<const uint8_t*>("Felucca"), 7))) {
     result.firmware = "Felucca";
   } else {
     const auto names = identity_texts(text);
@@ -267,7 +262,7 @@ Analysis analyze(std::span<const uint8_t> flash, uint32_t flash_id, uint16_t chi
     } else {
       const auto& [name, version] = names.back();
       result.firmware = (baud || name == "SMK-37+VA") ? name + " " + version + " (Baud Girl)"
-                                                       : name + " " + version;
+                                                      : name + " " + version;
     }
   }
   return result;

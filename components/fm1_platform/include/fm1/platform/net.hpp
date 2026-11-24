@@ -39,7 +39,9 @@ class Net {
   Result<void> start(Storage& storage, const Config& config);
   void set_status_provider(std::function<std::string()> provider);
   // Called by the HTTP server when a remote upload lands.
-  void note_library_change() { library_changed_.store(true); }
+  void note_library_change() {
+    library_changed_.store(true);
+  }
   [[nodiscard]] bool take_library_change() {
     return library_changed_.exchange(false);
   }
@@ -49,12 +51,18 @@ class Net {
   esp_err_t upload_catalog(httpd_req_t* request);
   [[nodiscard]] std::string status_json() const;
   [[nodiscard]] bool wifi_connected() const;
-  [[nodiscard]] bool wifi_configured() const { return configured_.load(); }
-  [[nodiscard]] bool wifi_reconfiguring() const { return reconfiguring_.load(); }
+  [[nodiscard]] bool wifi_configured() const {
+    return configured_.load();
+  }
+  [[nodiscard]] bool wifi_reconfiguring() const {
+    return reconfiguring_.load();
+  }
   [[nodiscard]] bool wifi_retry_allowed() {
     return wifi_retries_.fetch_add(1) < 5;
   }
-  [[nodiscard]] WifiState wifi_state() const { return state_.load(); }
+  [[nodiscard]] WifiState wifi_state() const {
+    return state_.load();
+  }
   [[nodiscard]] std::string wifi_error() const;
   [[nodiscard]] std::string wifi_ssid() const;
   [[nodiscard]] std::string local_ip() const;
@@ -90,10 +98,11 @@ class Net {
   void discovery_loop();
 
  public:
-  [[nodiscard]] void* event_group() const { return event_group_; }
+  [[nodiscard]] void* event_group() const {
+    return event_group_;
+  }
 
  private:
-
   Storage* storage_ = nullptr;
   std::string catalog_url_;
   std::string ssid_;

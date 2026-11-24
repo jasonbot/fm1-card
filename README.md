@@ -122,6 +122,17 @@ cmake --build build-tests
 ctest --test-dir build-tests --output-on-failure
 ```
 
+## Formatting
+
+C++ sources use the repository `.clang-format` (Google style, 100 columns).
+Vendored `lwjson` and `tinyusb` trees are excluded.
+
+```sh
+scripts/format.sh
+```
+
+Set `CLANG_FORMAT=/path/to/clang-format` if the binary is not on `PATH`.
+
 ## SD layout
 
 ```

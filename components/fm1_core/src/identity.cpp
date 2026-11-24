@@ -49,8 +49,7 @@ bool same_model(std::string_view device_model, std::string_view package_model) {
   if (lower(device_model) == lower(package_model)) {
     return true;
   }
-  return lower(device_model) == "starrykey-37 play" &&
-         lower(package_model) == "smk-37 pro";
+  return lower(device_model) == "starrykey-37 play" && lower(package_model) == "smk-37 pro";
 }
 
 bool package_fits(std::string_view current, std::string_view product) {

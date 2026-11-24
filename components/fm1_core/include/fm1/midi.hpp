@@ -20,8 +20,12 @@ struct Packet {
   uint8_t b1 = 0;
   uint8_t b2 = 0;
 
-  [[nodiscard]] constexpr uint8_t cin() const { return head & 0x0F; }
-  [[nodiscard]] constexpr uint8_t cable() const { return head >> 4; }
+  [[nodiscard]] constexpr uint8_t cin() const {
+    return head & 0x0F;
+  }
+  [[nodiscard]] constexpr uint8_t cable() const {
+    return head >> 4;
+  }
   [[nodiscard]] constexpr std::size_t payload_size() const;
   [[nodiscard]] constexpr std::span<const uint8_t> payload() const {
     return {&b0, payload_size()};
@@ -50,8 +54,8 @@ constexpr std::size_t Packet::payload_size() const {
   }
 }
 
-constexpr std::array<uint8_t, 10> kHandshakeQuery{
-    0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7};
+constexpr std::array<uint8_t, 10> kHandshakeQuery{0xF0, 0x00, 0x32, 0x45, 0x00,
+                                                  0x00, 0x00, 0x40, 0x7F, 0xF7};
 constexpr std::array<uint8_t, 6> kUpgrade{0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7};
 constexpr std::array<uint8_t, 6> kDownloadMode{0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7};
 

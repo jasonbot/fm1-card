@@ -131,18 +131,12 @@ Result<void> UsbHost::start() {
     return fail("TinyUSB host init failed after PHY claim");
   }
   TaskHandle_t usb_handle = nullptr;
-  xTaskCreatePinnedToCore(
-      [](void* arg) {
-        static_cast<UsbHost*>(arg)->task_loop();
-      },
-      "fm1-usb", 8192, this, 5, &usb_handle, 0);
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<UsbHost*>(arg)->task_loop(); }, "fm1-usb",
+                          8192, this, 5, &usb_handle, 0);
   usb_task_ = usb_handle;
   TaskHandle_t probe_handle = nullptr;
-  xTaskCreatePinnedToCore(
-      [](void* arg) {
-        static_cast<UsbHost*>(arg)->probe_loop();
-      },
-      "fm1-probe", 4096, this, 4, &probe_handle, 0);
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<UsbHost*>(arg)->probe_loop(); }, "fm1-probe",
+                          4096, this, 4, &probe_handle, 0);
   probe_task_ = probe_handle;
   return {};
 }
@@ -415,9 +409,9 @@ void UsbHost::mute(uint8_t slot, bool muted) {
   port.muted = muted;
 }
 
-std::optional<MidiPort> UsbHost::wait_for_midi(
-    std::string_view path, std::chrono::milliseconds timeout,
-    const std::function<bool(const MidiPort&)>& pred) {
+std::optional<MidiPort> UsbHost::wait_for_midi(std::string_view path,
+                                               std::chrono::milliseconds timeout,
+                                               const std::function<bool(const MidiPort&)>& pred) {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
     for (const auto& port : midi_ports()) {
@@ -480,8 +474,7 @@ void UsbHost::drain_tx() {
 }
 
 bool UsbHost::scsi_command(uint8_t slot, const msc_cbw_t& cbw, std::span<uint8_t> in,
-                           std::span<const uint8_t> out,
-                           std::chrono::milliseconds timeout) {
+                           std::span<const uint8_t> out, std::chrono::milliseconds timeout) {
   if (slot >= kMaxMsc) return false;
   uint8_t daddr = 0;
   {
@@ -539,8 +532,8 @@ void UsbHost::drain_msc() {
         auto req = *held;
         delete held;
         req->residue = data->csw != nullptr ? data->csw->data_residue : 0;
-        req->ok = data->csw != nullptr && data->csw->status == MSC_CSW_STATUS_PASSED &&
-                  req->residue == 0;
+        req->ok =
+            data->csw != nullptr && data->csw->status == MSC_CSW_STATUS_PASSED && req->residue == 0;
         req->done.release();
         return true;
       },
@@ -561,8 +554,8 @@ void UsbHost::notify_probe(uint8_t slot) {
 void UsbHost::probe_loop() {
   for (;;) {
     uint8_t slot = 0;
-    if (xQueueReceive(reinterpret_cast<QueueHandle_t>(probe_queue_), &slot,
-                      portMAX_DELAY) != pdTRUE) {
+    if (xQueueReceive(reinterpret_cast<QueueHandle_t>(probe_queue_), &slot, portMAX_DELAY) !=
+        pdTRUE) {
       continue;
     }
     if (slot >= kMaxMidi) continue;

@@ -45,8 +45,7 @@ void wifi_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     xEventGroupClearBits(group, kWifiConnected | kIp4);
     net->note_disconnected();
-    if (net->wifi_configured() && !net->wifi_reconfiguring() &&
-        net->wifi_retry_allowed()) {
+    if (net->wifi_configured() && !net->wifi_reconfiguring() && net->wifi_retry_allowed()) {
       esp_wifi_connect();
     }
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
@@ -90,7 +89,6 @@ std::string hex(const uint8_t* bytes, std::size_t length) {
   return out;
 }
 
-
 void set_cors(httpd_req_t* request) {
   httpd_resp_set_hdr(request, "Access-Control-Allow-Origin", "*");
   httpd_resp_set_hdr(request, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -113,8 +111,7 @@ esp_err_t options_handler(httpd_req_t* request) {
 }
 
 bool ends_with(std::string_view text, std::string_view suffix) {
-  return text.size() >= suffix.size() &&
-         text.substr(text.size() - suffix.size()) == suffix;
+  return text.size() >= suffix.size() && text.substr(text.size() - suffix.size()) == suffix;
 }
 
 std::string json_escape(std::string_view text) {
@@ -122,9 +119,15 @@ std::string json_escape(std::string_view text) {
   out.reserve(text.size() + 4);
   for (char c : text) {
     switch (c) {
-      case '"': out += "\\\""; break;
-      case '\\': out += "\\\\"; break;
-      default: out.push_back(c); break;
+      case '"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      default:
+        out.push_back(c);
+        break;
     }
   }
   return out;
@@ -151,9 +154,9 @@ std::string url_decode(std::string_view text) {
         std::isxdigit(static_cast<unsigned char>(text[i + 1])) &&
         std::isxdigit(static_cast<unsigned char>(text[i + 2]))) {
       const auto value = [](char c) {
-        return static_cast<unsigned>(c >= '0' && c <= '9' ? c - '0'
-                                   : c >= 'a' && c <= 'f' ? c - 'a' + 10
-                                                          : c - 'A' + 10);
+        return static_cast<unsigned>(c >= '0' && c <= '9'   ? c - '0'
+                                     : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                                                            : c - 'A' + 10);
       };
       out.push_back(static_cast<char>((value(text[i + 1]) << 4) | value(text[i + 2])));
       i += 2;
@@ -232,10 +235,8 @@ Result<void> Net::ensure_wifi_driver() {
   wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
   err = esp_wifi_init(&init);
   if (err != ESP_OK) return fail("Wi-Fi init failed");
-  esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event, this,
-                                      nullptr);
-  esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event, this,
-                                      nullptr);
+  esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event, this, nullptr);
+  esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event, this, nullptr);
   err = esp_wifi_set_mode(WIFI_MODE_STA);
   if (err != ESP_OK) return fail("Wi-Fi mode failed");
   err = esp_wifi_start();
@@ -261,12 +262,10 @@ Result<void> Net::apply_wifi(const Config& config) {
     return {};
   }
   wifi_config_t wifi{};
-  std::strncpy(reinterpret_cast<char*>(wifi.sta.ssid), ssid_.c_str(),
-               sizeof(wifi.sta.ssid) - 1);
+  std::strncpy(reinterpret_cast<char*>(wifi.sta.ssid), ssid_.c_str(), sizeof(wifi.sta.ssid) - 1);
   std::strncpy(reinterpret_cast<char*>(wifi.sta.password), config.password.c_str(),
                sizeof(wifi.sta.password) - 1);
-  wifi.sta.threshold.authmode =
-      config.password.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+  wifi.sta.threshold.authmode = config.password.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
   reconfiguring_.store(true);
   (void)esp_wifi_disconnect();
   const esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &wifi);
@@ -305,14 +304,12 @@ Result<std::vector<WifiNetwork>> Net::scan_networks() {
   records.resize(count);
   std::vector<WifiNetwork> networks;
   for (const auto& record : records) {
-    const auto length = strnlen(reinterpret_cast<const char*>(record.ssid),
-                                sizeof(record.ssid));
+    const auto length = strnlen(reinterpret_cast<const char*>(record.ssid), sizeof(record.ssid));
     if (length == 0) continue;
     const std::string name(reinterpret_cast<const char*>(record.ssid), length);
-    const bool known = std::any_of(networks.begin(), networks.end(),
-                                   [&](const WifiNetwork& network) {
-                                     return network.ssid == name;
-                                   });
+    const bool known =
+        std::any_of(networks.begin(), networks.end(),
+                    [&](const WifiNetwork& network) { return network.ssid == name; });
     if (known) continue;
     networks.push_back({name, record.rssi, record.authmode != WIFI_AUTH_OPEN});
   }
@@ -372,9 +369,8 @@ esp_err_t Net::firmware_info(httpd_req_t* request) {
   std::string path;
   std::string dir;
   for (const auto& candidate : {"fm1-card/firmwares", "firmwares"}) {
-    const std::string candidate_path =
-        storage_->path(std::string(candidate) + "/" + name);
-    struct stat info {};
+    const std::string candidate_path = storage_->path(std::string(candidate) + "/" + name);
+    struct stat info{};
     if (stat(candidate_path.c_str(), &info) == 0 && info.st_size > 0) {
       path = candidate_path;
       dir = candidate;
@@ -386,7 +382,7 @@ esp_err_t Net::firmware_info(httpd_req_t* request) {
     httpd_resp_send_err(request, HTTPD_404_NOT_FOUND, "firmware not found");
     return ESP_FAIL;
   }
-  struct stat info {};
+  struct stat info{};
   if (stat(path.c_str(), &info) != 0) {
     httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "stat failed");
     return ESP_FAIL;
@@ -401,22 +397,22 @@ esp_err_t Net::firmware_info(httpd_req_t* request) {
   }
   const auto device = catalog::device_from_product(product);
   const auto variant = catalog::smk_variant_from_product(product);
-  const char* variant_name = variant == catalog::SmkVariant::Elite   ? "elite"
-                             : variant == catalog::SmkVariant::Mke   ? "mke"
-                             : variant == catalog::SmkVariant::Pro   ? "pro"
-                                                                    : "all";
+  const char* variant_name = variant == catalog::SmkVariant::Elite ? "elite"
+                             : variant == catalog::SmkVariant::Mke ? "mke"
+                             : variant == catalog::SmkVariant::Pro ? "pro"
+                                                                   : "all";
   std::string body;
   body.reserve(400);
   body = "{\"name\":\"" + json_escape(name) + "\",\"dir\":\"" + json_escape(dir) +
          "\",\"size\":" + std::to_string(info.st_size) + ",\"sha256\":";
   body += digest ? "\"" + *digest + "\"" : "null";
   body += ",\"product\":\"" + json_escape(product) + "\",\"device\":\"" +
-          (device == catalog::Device::Smk37 ? "smk37" : "fm1") +
-          "\",\"variant\":\"" + variant_name + "\"";
+          (device == catalog::Device::Smk37 ? "smk37" : "fm1") + "\",\"variant\":\"" +
+          variant_name + "\"";
   body += ",\"title\":\"" + json_escape(local.name) + "\",\"author\":\"" +
-          json_escape(local.author) + "\",\"version\":\"" +
-          json_escape(local.version) + "\",\"description\":\"" +
-          json_escape(local.what) + "\",\"tags\":\"" + json_escape(local.tags) + "\"}";
+          json_escape(local.author) + "\",\"version\":\"" + json_escape(local.version) +
+          "\",\"description\":\"" + json_escape(local.what) + "\",\"tags\":\"" +
+          json_escape(local.tags) + "\"}";
   set_cors(request);
   httpd_resp_set_type(request, "application/json");
   return httpd_resp_send(request, body.data(), body.size());
@@ -462,15 +458,16 @@ esp_err_t Net::list_firmwares(httpd_req_t* request) {
       record.reserve(256);
       if (!first) record += ",";
       first = false;
-      record += "{\"name\":\"" + json_escape(name) + "\",\"dir\":\"" +
-                json_escape(dir) + "\"";
+      record += "{\"name\":\"" + json_escape(name) + "\",\"dir\":\"" + json_escape(dir) + "\"";
       if (detail) {
-        struct stat info {};
+        struct stat info{};
         if (stat(path.c_str(), &info) != 0) continue;
         const std::string sha = read_meta_sha(path);
         record += ",\"size\":" + std::to_string(info.st_size) + ",\"sha256\":";
-        if (sha.empty()) record += "null";
-        else record += "\"" + sha + "\"";
+        if (sha.empty())
+          record += "null";
+        else
+          record += "\"" + sha + "\"";
       }
       record += "}";
       out += record;
@@ -559,8 +556,8 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
   std::array<char, 1024> buffer{};
   int timeouts = 0;
   while (remaining > 0) {
-    const int got = httpd_req_recv(request, buffer.data(),
-                                   std::min<std::size_t>(remaining, buffer.size()));
+    const int got =
+        httpd_req_recv(request, buffer.data(), std::min<std::size_t>(remaining, buffer.size()));
     if (got == HTTPD_SOCK_ERR_TIMEOUT) {
       if (++timeouts > 10) {
         log("upload timeout\n");
@@ -646,8 +643,7 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
         !saved) {
       log("upload metadata failed\n");
       set_cors(request);
-      httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
-                          saved.error().message.c_str());
+      httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, saved.error().message.c_str());
       return ESP_FAIL;
     }
   }
@@ -687,8 +683,8 @@ esp_err_t Net::upload_catalog(httpd_req_t* request) {
   std::array<char, 2048> buffer{};
   int timeouts = 0;
   while (remaining > 0) {
-    const int got = httpd_req_recv(request, buffer.data(),
-                                   std::min<std::size_t>(remaining, buffer.size()));
+    const int got =
+        httpd_req_recv(request, buffer.data(), std::min<std::size_t>(remaining, buffer.size()));
     if (got == HTTPD_SOCK_ERR_TIMEOUT) {
       if (++timeouts > 10) {
         std::fclose(file);
@@ -744,7 +740,7 @@ esp_err_t Net::upload_catalog(httpd_req_t* request) {
 Result<std::size_t> Net::load_local_catalog() {
   if (storage_ == nullptr || !storage_->mounted()) return fail("no SD card");
   for (const auto& path : {Library::manifest_path(), std::string("firmwares.json")}) {
-    struct stat info {};
+    struct stat info{};
     if (stat(storage_->path(path).c_str(), &info) == 0 && info.st_size > 0) {
       return build_catalog_cache(*storage_, path);
     }
@@ -883,10 +879,10 @@ void Net::discovery_loop() {
           name = device_name_;
         }
         char reply[160]{};
-        const int length = std::snprintf(reply, sizeof(reply), "fm1-card;%s;80;%s\n", ip,
-                                        name.c_str());
-        sendto(discovery_socket_, reply, std::max(0, length), 0,
-               reinterpret_cast<sockaddr*>(&from), from_len);
+        const int length =
+            std::snprintf(reply, sizeof(reply), "fm1-card;%s;80;%s\n", ip, name.c_str());
+        sendto(discovery_socket_, reply, std::max(0, length), 0, reinterpret_cast<sockaddr*>(&from),
+               from_len);
       }
     }
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -899,8 +895,8 @@ Result<void> Net::connect_wifi() {
   xEventGroupClearBits(group, kWifiConnected | kIp4 | kFail);
   wifi_retries_.store(0);
   esp_wifi_connect();
-  const auto bits = xEventGroupWaitBits(group, kIp4 | kFail, pdFALSE, pdTRUE,
-                                        pdMS_TO_TICKS(20'000));
+  const auto bits =
+      xEventGroupWaitBits(group, kIp4 | kFail, pdFALSE, pdTRUE, pdMS_TO_TICKS(20'000));
   if ((bits & kIp4) == 0) {
     return fail("did not get an IP within 20 s (SSID \"" + ssid_ + "\")");
   }
@@ -980,7 +976,7 @@ Result<void> Net::fetch(const std::string& url, const ProgressFn& progress,
                         const std::function<bool(std::span<const char>)>& sink) {
   if (!wifi_connected()) {
     return fail(wifi_configured() ? "Wi-Fi is still connecting; try again in a moment"
-                                 : "Wi-Fi is not configured");
+                                  : "Wi-Fi is not configured");
   }
   constexpr int kMaxRedirects = 4;
   esp_http_client_config_t config{};
@@ -1075,10 +1071,8 @@ Result<void> Net::refresh_catalog(const ProgressFn& progress) {
   catalog::StreamParser parser([&](catalog::Entry&& entry) {
     const auto record = catalog::encode_record(entry);
     const uint32_t length = static_cast<uint32_t>(record.size());
-    const uint8_t header[4]{static_cast<uint8_t>(length),
-                            static_cast<uint8_t>(length >> 8),
-                            static_cast<uint8_t>(length >> 16),
-                            static_cast<uint8_t>(length >> 24)};
+    const uint8_t header[4]{static_cast<uint8_t>(length), static_cast<uint8_t>(length >> 8),
+                            static_cast<uint8_t>(length >> 16), static_cast<uint8_t>(length >> 24)};
     if (std::fwrite(header, 1, 4, file) != 4 ||
         std::fwrite(record.data(), 1, record.size(), file) != record.size()) {
       write_ok = false;
@@ -1166,8 +1160,9 @@ Result<void> Net::download(const catalog::Entry& entry, const std::string& desti
     std::remove(temp_path.c_str());
     return fail("cannot save " + destination);
   }
-  if (auto saved = write_local_metadata(destination, catalog::package_url(entry), actual,
-                                        written, &entry); !saved) {
+  if (auto saved =
+          write_local_metadata(destination, catalog::package_url(entry), actual, written, &entry);
+      !saved) {
     return fail("saved package, but metadata write failed: " + saved.error().message);
   }
   return {};

@@ -66,9 +66,15 @@ class Loader {
   // flash id. The loader image must live for the duration of open().
   Result<void> open(std::span<const uint8_t> loader_image);
 
-  [[nodiscard]] uint16_t chip_key() const { return chip_key_; }
-  [[nodiscard]] uint32_t flash_id() const { return flash_id_; }
-  [[nodiscard]] std::size_t io_size() const { return io_; }
+  [[nodiscard]] uint16_t chip_key() const {
+    return chip_key_;
+  }
+  [[nodiscard]] uint32_t flash_id() const {
+    return flash_id_;
+  }
+  [[nodiscard]] std::size_t io_size() const {
+    return io_;
+  }
 
   Result<std::vector<uint8_t>> read(uint32_t address, std::size_t length);
   Result<void> write(uint32_t address, std::span<const uint8_t> bytes);

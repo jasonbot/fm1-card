@@ -33,7 +33,16 @@ class App {
   void net_loop();
 
  private:
-  enum class NetCommand { Start, Refresh, Download, Hoard, WifiScan, WifiConnect, SaveDeviceName, LoadLocalCatalog };
+  enum class NetCommand {
+    Start,
+    Refresh,
+    Download,
+    Hoard,
+    WifiScan,
+    WifiConnect,
+    SaveDeviceName,
+    LoadLocalCatalog
+  };
   struct NetJob {
     NetCommand command = NetCommand::Start;
     catalog::Entry entry;
@@ -43,7 +52,17 @@ class App {
     std::string name;
   };
 
-  enum class PopupKind { None, Packages, Sinks, MscActions, HoardConfirm, WifiNetworks, WifiPassword, DeviceName, FlashTargets };
+  enum class PopupKind {
+    None,
+    Packages,
+    Sinks,
+    MscActions,
+    HoardConfirm,
+    WifiNetworks,
+    WifiPassword,
+    DeviceName,
+    FlashTargets
+  };
   struct Popup {
     PopupKind kind = PopupKind::None;
     std::string title;
@@ -59,8 +78,7 @@ class App {
   void open_wifi_dialog();
   void open_name_dialog();
   void sync_ui();
-  void refresh_library(bool keep_shift = false, bool show_waiting = true,
-                       bool reload_local = true);
+  void refresh_library(bool keep_shift = false, bool show_waiting = true, bool reload_local = true);
   void set_message(std::string message, bool error = false, uint32_t ttl_ms = 6000);
   void show_waiting(std::string_view text);
   void run_menu_action(int index);
@@ -146,7 +164,6 @@ class App {
   bool battery_charging_ = false;
   uint64_t charge_seen_us_ = 0;
   bool filter_refresh_ = false;
-
 };
 
 }  // namespace fm1

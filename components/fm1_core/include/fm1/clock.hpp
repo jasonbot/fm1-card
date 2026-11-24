@@ -17,12 +17,20 @@ class Clock {
  public:
   explicit Clock(uint32_t bpm = kDefaultBpm) : bpm_(clamp(bpm)) {}
 
-  [[nodiscard]] uint32_t bpm() const { return bpm_; }
+  [[nodiscard]] uint32_t bpm() const {
+    return bpm_;
+  }
   void set_bpm(uint32_t bpm);
 
-  [[nodiscard]] bool running() const { return running_; }
-  [[nodiscard]] uint64_t tick() const { return tick_; }
-  [[nodiscard]] uint64_t beat() const { return tick_ / kTicksPerBeat; }
+  [[nodiscard]] bool running() const {
+    return running_;
+  }
+  [[nodiscard]] uint64_t tick() const {
+    return tick_;
+  }
+  [[nodiscard]] uint64_t beat() const {
+    return tick_ / kTicksPerBeat;
+  }
 
   [[nodiscard]] uint64_t interval_us() const {
     return 60'000'000ull / (static_cast<uint64_t>(bpm_) * kTicksPerBeat);

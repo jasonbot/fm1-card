@@ -49,8 +49,12 @@ class Canvas {
   void text_clipped(int col, int row, int width, std::string_view text, uint8_t color);
 
   [[nodiscard]] uint8_t at(int x, int y) const;
-  [[nodiscard]] int columns() const { return kCols; }
-  [[nodiscard]] int rows() const { return kRows; }
+  [[nodiscard]] int columns() const {
+    return kCols;
+  }
+  [[nodiscard]] int rows() const {
+    return kRows;
+  }
 
   // Present to a Display in 16-line bands. The callback receives an RGB565
   // rectangle; it must block until the transfer is done.

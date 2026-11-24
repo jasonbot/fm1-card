@@ -52,8 +52,12 @@ class LogicalImage {
  public:
   LogicalImage(Reader& reader, Layout layout) : reader_(reader), layout_(layout) {}
 
-  [[nodiscard]] const Layout& layout() const { return layout_; }
-  [[nodiscard]] uint64_t size() const { return layout_.logical_size(); }
+  [[nodiscard]] const Layout& layout() const {
+    return layout_;
+  }
+  [[nodiscard]] uint64_t size() const {
+    return layout_.logical_size();
+  }
 
   // Reads exactly dst.size() logical bytes or returns an error.
   Result<std::size_t> read(uint64_t logical_offset, std::span<uint8_t> dst);

@@ -42,8 +42,7 @@ Result<Layout> inspect(Reader& reader) {
     return fail("not an FM-1 package: too short");
   }
   std::array<uint8_t, kMaxBlocks * kBlock> head{};
-  const std::size_t want = static_cast<std::size_t>(
-      std::min<uint64_t>(head.size(), size));
+  const std::size_t want = static_cast<std::size_t>(std::min<uint64_t>(head.size(), size));
   auto read = reader.read_at(0, std::span<uint8_t>(head.data(), want));
   if (!read) {
     return std::unexpected(read.error());
@@ -65,8 +64,7 @@ std::vector<uint8_t> logical_image(std::span<const uint8_t> fwsc) {
     out.insert(out.end(), fwsc.begin() + static_cast<std::ptrdiff_t>(i * kBlock),
                fwsc.begin() + static_cast<std::ptrdiff_t>(i * kBlock + kKeep));
   }
-  out.insert(out.end(), fwsc.begin() + static_cast<std::ptrdiff_t>(blocks * kBlock),
-             fwsc.end());
+  out.insert(out.end(), fwsc.begin() + static_cast<std::ptrdiff_t>(blocks * kBlock), fwsc.end());
   return out;
 }
 

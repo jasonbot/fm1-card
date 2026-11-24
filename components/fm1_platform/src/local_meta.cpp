@@ -15,7 +15,6 @@ std::string meta_safe(std::string_view text) {
   return out;
 }
 
-
 }  // namespace
 
 LocalMetadata read_local_metadata(const std::string& package_path) {
@@ -44,16 +43,23 @@ LocalMetadata read_local_metadata(const std::string& package_path) {
     if (eq == std::string::npos) continue;
     const auto key = text.substr(0, eq);
     const auto value = text.substr(eq + 1);
-    if (key == "id") meta.id = value;
-    else if (key == "name") meta.name = value;
-    else if (key == "version") meta.version = value;
-    else if (key == "author") meta.author = value;
-    else if (key == "what") meta.what = value;
-    else if (key == "tags") meta.tags = value;
-    else if (key == "product") meta.product = value;
+    if (key == "id")
+      meta.id = value;
+    else if (key == "name")
+      meta.name = value;
+    else if (key == "version")
+      meta.version = value;
+    else if (key == "author")
+      meta.author = value;
+    else if (key == "what")
+      meta.what = value;
+    else if (key == "tags")
+      meta.tags = value;
+    else if (key == "product")
+      meta.product = value;
   }
   std::fclose(file);
-  struct stat info {};
+  struct stat info{};
   if (stat(package_path.c_str(), &info) != 0 || info.st_size <= 0) {
     meta.valid = false;
   } else {
@@ -69,11 +75,10 @@ Result<void> write_local_metadata(const std::string& package_path, std::string_v
   const std::string temp = path + ".tmp";
   std::FILE* file = std::fopen(temp.c_str(), "wb");
   if (file == nullptr) return fail("cannot write " + temp);
-  std::fprintf(file, "%s\n%s\n%zu\n", std::string(source).c_str(),
-               std::string(sha256).c_str(), size);
+  std::fprintf(file, "%s\n%s\n%zu\n", std::string(source).c_str(), std::string(sha256).c_str(),
+               size);
   if (entry != nullptr) {
-    std::fprintf(file,
-                 "id=%s\nname=%s\nversion=%s\nauthor=%s\nwhat=%s\ntags=%s\nproduct=%s\n",
+    std::fprintf(file, "id=%s\nname=%s\nversion=%s\nauthor=%s\nwhat=%s\ntags=%s\nproduct=%s\n",
                  meta_safe(entry->id).c_str(), meta_safe(entry->name).c_str(),
                  meta_safe(entry->version).c_str(), meta_safe(entry->author).c_str(),
                  meta_safe(entry->what).c_str(), meta_safe(entry->tags).c_str(),

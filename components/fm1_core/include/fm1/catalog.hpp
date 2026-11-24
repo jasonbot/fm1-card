@@ -66,7 +66,9 @@ class StreamParser {
   void feed(std::span<const char> chunk);
   Result<void> finish();
 
-  [[nodiscard]] uint32_t entries() const { return entries_; }
+  [[nodiscard]] uint32_t entries() const {
+    return entries_;
+  }
 
  private:
   static void trampoline(lwjson_stream_parser_t* parser, lwjson_stream_type_t type);

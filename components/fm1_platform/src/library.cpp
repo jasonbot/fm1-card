@@ -26,8 +26,7 @@ bool same_version_name(std::string_view a, std::string_view b) {
   return true;
 }
 
-bool installed_hides(const catalog::Entry& entry,
-                     const std::vector<LocalMetadata>& installed) {
+bool installed_hides(const catalog::Entry& entry, const std::vector<LocalMetadata>& installed) {
   for (const auto& local : installed) {
     if (!local.valid || !same_version_name(local.name, entry.name)) continue;
     if (catalog::version_at_least(local.version, entry.version)) return true;
@@ -55,19 +54,17 @@ Result<std::optional<std::vector<uint8_t>>> read_record(std::FILE* file) {
 std::string sanitise(std::string_view text) {
   std::string out;
   for (char c : text) {
-    out.push_back(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' ||
-                          c == '.'
-                      ? c
-                      : '_');
+    out.push_back(
+        std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.' ? c : '_');
   }
   return out;
 }
 
 }  // namespace
 
-Result<std::vector<catalog::Entry>> Library::page(
-    const LibraryFilter& filter, std::size_t offset, std::size_t limit,
-    const std::vector<LocalMetadata>& installed) {
+Result<std::vector<catalog::Entry>> Library::page(const LibraryFilter& filter, std::size_t offset,
+                                                  std::size_t limit,
+                                                  const std::vector<LocalMetadata>& installed) {
   std::vector<catalog::Entry> out;
   if (!storage_.mounted()) return out;
   std::FILE* file = std::fopen(storage_.path(cache_path()).c_str(), "rb");
@@ -130,7 +127,7 @@ Result<std::size_t> Library::count(const LibraryFilter& filter,
 Result<void> Library::for_each(const std::function<bool(const catalog::Entry&)>& fn) {
   if (!storage_.mounted()) return fail("no SD card");
   std::FILE* file = std::fopen(storage_.path(cache_path()).c_str(), "rb");
-  if (file == nullptr) return { };
+  if (file == nullptr) return {};
   for (;;) {
     auto record = read_record(file);
     if (!record) {
@@ -188,7 +185,8 @@ Result<std::vector<LocalMetadata>> Library::local_metadata() {
       auto meta = read_local_metadata(path);
       if (meta.name.empty()) {
         meta.name = name.substr(0, name.size() - 5);
-        for (char& c : meta.name) if (c == '_') c = ' ';
+        for (char& c : meta.name)
+          if (c == '_') c = ' ';
       }
       out.push_back(std::move(meta));
       paths.push_back(path);
@@ -204,7 +202,7 @@ Result<std::vector<LocalMetadata>> Library::local_metadata() {
     const auto found = by_path.find(*path);
     if (found == by_path.end()) return true;
     LocalMetadata& meta = out[found->second];
-    struct stat info {};
+    struct stat info{};
     const bool exists = stat(path->c_str(), &info) == 0 && info.st_size > 0;
     if (meta.name.empty()) {
       meta.id = entry.id;
@@ -220,17 +218,17 @@ Result<std::vector<LocalMetadata>> Library::local_metadata() {
       (void)write_local_metadata(*path, meta.source, meta.sha256, meta.size, &entry);
     } else {
       if (meta.product.empty()) meta.product = entry.product;
-      meta.valid = exists &&
-                   (meta.size == 0 || static_cast<uint64_t>(info.st_size) == meta.size);
+      meta.valid = exists && (meta.size == 0 || static_cast<uint64_t>(info.st_size) == meta.size);
     }
     return true;
   });
   return out;
 }
 
-Result<std::vector<LocalPackage>> Library::local_packages_page(
-    std::size_t offset, std::size_t limit, std::size_t* total,
-    std::string_view text) {
+Result<std::vector<LocalPackage>> Library::local_packages_page(std::size_t offset,
+                                                               std::size_t limit,
+                                                               std::size_t* total,
+                                                               std::string_view text) {
   std::vector<LocalPackage> out;
   if (!storage_.mounted()) return out;
   std::vector<std::string> paths;
@@ -286,8 +284,6 @@ Result<std::vector<LocalPackage>> Library::local_packages_page(
   return out;
 }
 
-
-
 Result<std::size_t> build_catalog_cache(Storage& storage, std::string_view json_relative) {
   if (!storage.mounted()) return fail("no SD card");
   const auto input_path = storage.path(json_relative);
@@ -307,10 +303,8 @@ Result<std::size_t> build_catalog_cache(Storage& storage, std::string_view json_
   catalog::StreamParser parser([&](catalog::Entry&& entry) {
     const auto record = catalog::encode_record(entry);
     const uint32_t length = static_cast<uint32_t>(record.size());
-    const uint8_t header[4]{static_cast<uint8_t>(length),
-                            static_cast<uint8_t>(length >> 8),
-                            static_cast<uint8_t>(length >> 16),
-                            static_cast<uint8_t>(length >> 24)};
+    const uint8_t header[4]{static_cast<uint8_t>(length), static_cast<uint8_t>(length >> 8),
+                            static_cast<uint8_t>(length >> 16), static_cast<uint8_t>(length >> 24)};
     if (std::fwrite(header, 1, 4, output) != 4 ||
         std::fwrite(record.data(), 1, record.size(), output) != record.size()) {
       write_ok = false;

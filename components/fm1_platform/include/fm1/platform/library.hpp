@@ -34,7 +34,7 @@ struct LocalMetadata {
 
 struct LocalPackage {
   std::string path;
-  std::string name;     // friendly catalog name, or filename stem
+  std::string name;  // friendly catalog name, or filename stem
   std::string product;
   catalog::Device device = catalog::Device::Fm1;
   catalog::SmkVariant variant = catalog::SmkVariant::All;
@@ -47,7 +47,6 @@ LocalMetadata read_local_metadata(const std::string& package_path);
 Result<void> write_local_metadata(const std::string& package_path, std::string_view source,
                                   std::string_view sha256, std::size_t size,
                                   const catalog::Entry* entry = nullptr);
-
 
 enum class ChipFilter : uint8_t { All, New, Old };
 
@@ -64,9 +63,9 @@ class Library {
 
   // Scans the cache for entries matching the filter, returning at most `limit`
   // entries starting at `offset`.
-  Result<std::vector<catalog::Entry>> page(
-      const LibraryFilter& filter, std::size_t offset, std::size_t limit,
-      const std::vector<LocalMetadata>& installed = {});
+  Result<std::vector<catalog::Entry>> page(const LibraryFilter& filter, std::size_t offset,
+                                           std::size_t limit,
+                                           const std::vector<LocalMetadata>& installed = {});
   Result<std::size_t> count(const LibraryFilter& filter,
                             const std::vector<LocalMetadata>& installed = {});
   // Calls fn for every cached entry; stop early if fn returns false.
@@ -74,15 +73,21 @@ class Library {
   Result<std::optional<catalog::Entry>> find(std::string_view id);
   // Inspects at most `limit` files; `total` receives the full count.
   // Sorted window of local packages; only `[offset, offset+limit)` is inspected.
-  Result<std::vector<LocalPackage>> local_packages_page(
-      std::size_t offset, std::size_t limit, std::size_t* total = nullptr,
-      std::string_view text = {});
+  Result<std::vector<LocalPackage>> local_packages_page(std::size_t offset, std::size_t limit,
+                                                        std::size_t* total = nullptr,
+                                                        std::string_view text = {});
   Result<std::vector<LocalMetadata>> local_metadata();
   Result<std::string> package_path(std::string_view id, std::string_view version);
 
-  [[nodiscard]] static std::string cache_path() { return "fm1-card/catalog.bin"; }
-  [[nodiscard]] static std::string firmwares_dir() { return "fm1-card/firmwares"; }
-  [[nodiscard]] static std::string manifest_path() { return "fm1-card/firmwares.json"; }
+  [[nodiscard]] static std::string cache_path() {
+    return "fm1-card/catalog.bin";
+  }
+  [[nodiscard]] static std::string firmwares_dir() {
+    return "fm1-card/firmwares";
+  }
+  [[nodiscard]] static std::string manifest_path() {
+    return "fm1-card/firmwares.json";
+  }
 
  private:
   Storage& storage_;

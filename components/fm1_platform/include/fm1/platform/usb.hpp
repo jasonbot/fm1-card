@@ -57,8 +57,7 @@ class UsbHost {
   // Queues packets for the USB task. False when the slot is not mounted.
   bool send_packets(uint8_t slot, std::span<const fm1::midi::Packet> packets);
   bool send_sysex(uint8_t slot, std::span<const uint8_t> sysex);
-  std::optional<std::vector<uint8_t>> read_sysex(uint8_t slot,
-                                                 std::chrono::milliseconds timeout);
+  std::optional<std::vector<uint8_t>> read_sysex(uint8_t slot, std::chrono::milliseconds timeout);
   void drain_sysex(uint8_t slot);
 
   void claim(uint8_t slot, bool claimed);
@@ -69,9 +68,8 @@ class UsbHost {
   void mute(uint8_t slot, bool muted);
 
   // Polls until a MIDI port on `path` satisfies pred, or the timeout expires.
-  std::optional<MidiPort> wait_for_midi(
-      std::string_view path, std::chrono::milliseconds timeout,
-      const std::function<bool(const MidiPort&)>& pred);
+  std::optional<MidiPort> wait_for_midi(std::string_view path, std::chrono::milliseconds timeout,
+                                        const std::function<bool(const MidiPort&)>& pred);
 
   // MSC SCSI command; data-in uses `in`, data-out uses `out`.
   bool scsi_command(uint8_t slot, const msc_cbw_t& cbw, std::span<uint8_t> in,
@@ -94,7 +92,6 @@ class UsbHost {
   void on_msc_umount(uint8_t daddr);
 
  private:
-
   void notify();
   void enqueue(uint8_t slot, const fm1::midi::Packet& packet);
   void drain_tx();

@@ -13,112 +13,47 @@ std::string trim(std::string_view text, std::size_t width) {
   return std::string(text.substr(0, width - 2)) + "..";
 }
 
-char checkbox(bool on) { return on ? 'x' : ' '; }
+char checkbox(bool on) {
+  return on ? 'x' : ' ';
+}
 
 }  // namespace
 
 namespace {
 
 constexpr const char* kDevTab[] = {
-    "             ",
-    "             ",
-    " ########### ",
-    " # # # # # # ",
-    " # # # # # # ",
-    " # # # # # # ",
-    " #         # ",
-    " #         # ",
-    "  #########  ",
-    "             ",
-    "             ",
+    "             ", "             ", " ########### ", " # # # # # # ",
+    " # # # # # # ", " # # # # # # ", " #         # ", " #         # ",
+    "  #########  ", "             ", "             ",
 };
 constexpr const char* kRouteTab[] = {
-    "            ",
-    "            ",
-    " #  ####### ",
-    "  # # # # # ",
-    "   ## # # # ",
-    "  ###     # ",
-    "   ##     # ",
-    "  # #     # ",
-    " #  ####### ",
-    "            ",
-    "            ",
+    "            ", "            ", " #  ####### ", "  # # # # # ", "   ## # # # ", "  ###     # ",
+    "   ##     # ", "  # #     # ", " #  ####### ", "            ", "            ",
 };
 constexpr const char* kClockTab[] = {
-    "         ",
-    "    #    ",
-    "   # #   ",
-    "  # # #  ",
-    "  # # #  ",
-    " #  #  # ",
-    " #  #  # ",
-    " #     # ",
-    "  #####  ",
-    "         ",
-    "         ",
+    "         ", "    #    ", "   # #   ", "  # # #  ", "  # # #  ", " #  #  # ",
+    " #  #  # ", " #     # ", "  #####  ", "         ", "         ",
 };
 constexpr const char* kLibraryTab[] = {
-    "           ",
-    "           ",
-    " # #   # # ",
-    " # #   # # ",
-    " # #  #  # ",
-    " # #  #  # ",
-    " # #  #  # ",
-    " # # #   # ",
-    " # # #   # ",
-    "           ",
-    "           ",
+    "           ", "           ", " # #   # # ", " # #   # # ", " # #  #  # ", " # #  #  # ",
+    " # #  #  # ", " # # #   # ", " # # #   # ", "           ", "           ",
 };
 constexpr const char* kSystemTab[] = {
-    "             ",
-    "             ",
-    "  #########  ",
-    " #         # ",
-    " # ####### # ",
-    " #         # ",
-    " # # # # # # ",
-    "  #       #  ",
-    " ########### ",
-    "             ",
-    "             ",
+    "             ", "             ", "  #########  ", " #         # ",
+    " # ####### # ", " #         # ", " # # # # # # ", "  #       #  ",
+    " ########### ", "             ", "             ",
 };
 constexpr const char* kWifiIcon[] = {
-    "BBWWWWWWWBB",
-    "BWBBBBBBBWB",
-    "WBGGGGGGGBW",
-    "WBGGGGGGGBW",
-    "BWBGGGGGBWB",
-    "BBWBGGGBWBB",
-    "BBBWBGBWBBB",
-    "BBBBWBWBBBB",
-    "BBBBBWBBBBB",
-    "BBBBBBBBBBB",
+    "BBWWWWWWWBB", "BWBBBBBBBWB", "WBGGGGGGGBW", "WBGGGGGGGBW", "BWBGGGGGBWB",
+    "BBWBGGGBWBB", "BBBWBGBWBBB", "BBBBWBWBBBB", "BBBBBWBBBBB", "BBBBBBBBBBB",
 };
 constexpr const char* kSdIcon[] = {
-    "WWWWWWWWW",
-    "WGGGGGGGW",
-    "WGGGGGGGW",
-    "WGGGGGGGW",
-    "WGGGGGGGW",
-    "WGWGWGWGW",
-    "WGWGWGWGW",
-    "WGWGWGWGW",
-    "WWWWWWWWB",
-    "BBBBBBBBB",
+    "WWWWWWWWW", "WGGGGGGGW", "WGGGGGGGW", "WGGGGGGGW", "WGGGGGGGW",
+    "WGWGWGWGW", "WGWGWGWGW", "WGWGWGWGW", "WWWWWWWWB", "BBBBBBBBB",
 };
 constexpr const char* kBatteryIcon[] = {
-    "WWWWWWWWWWB",
-    "WBBBBBBBBWB",
-    "WBGGGGGGBWB",
-    "WBGGGGGGBWW",
-    "WBGGGGGGBWW",
-    "WBGGGGGGBWW",
-    "WBGGGGGGBWB",
-    "WBBBBBBBBWB",
-    "WWWWWWWWWWB",
-    "BBBBBBBBBBB",
+    "WWWWWWWWWWB", "WBBBBBBBBWB", "WBGGGGGGBWB", "WBGGGGGGBWW", "WBGGGGGGBWW",
+    "WBGGGGGGBWW", "WBGGGGGGBWB", "WBBBBBBBBWB", "WWWWWWWWWWB", "BBBBBBBBBBB",
 };
 
 template <std::size_t H>
@@ -170,8 +105,7 @@ void draw_wifi_icon(Canvas& canvas, int x, int y, const char* const (&rows)[H], 
 }
 
 template <std::size_t H>
-void draw_sd_icon(Canvas& canvas, int x, int y, const char* const (&rows)[H], int w,
-                  bool mounted) {
+void draw_sd_icon(Canvas& canvas, int x, int y, const char* const (&rows)[H], int w, bool mounted) {
   for (int row = 0; row < static_cast<int>(H); ++row) {
     for (int col = 0; col < w; ++col) {
       const char c = rows[row][col];
@@ -196,14 +130,14 @@ void draw_battery_icon(Canvas& canvas, int x, int y, const char* const (&rows)[H
     }
   }
   const int span = std::max(1, max_x - min_x);
-  const int lit_to = percent <= 0 ? min_x - 1
-                                 : min_x + span * std::clamp(percent, 0, 100) / 100;
+  const int lit_to = percent <= 0 ? min_x - 1 : min_x + span * std::clamp(percent, 0, 100) / 100;
   for (int row = 0; row < static_cast<int>(H); ++row) {
     for (int col = 0; col < w; ++col) {
       const char c = rows[row][col];
       if (c == '.') continue;
-      const uint8_t color =
-          c == 'W' ? 11 : c == 'B' ? 3 : (col <= lit_to ? (charging ? 4 : 11) : 3);
+      const uint8_t color = c == 'W'   ? 11
+                            : c == 'B' ? 3
+                                       : (col <= lit_to ? (charging ? 4 : 11) : 3);
       canvas.pixel(x + col, y + row, color);
     }
   }
@@ -242,8 +176,7 @@ void Ui::header(const UiState& state) {
   draw_tab_glyph(canvas_, 47, 4, kRouteTab, 12, pane == 3);
   draw_tab_glyph(canvas_, 60, 4, kClockTab, 9, pane == 4);
 
-  draw_right_text(canvas_, 71, 102, 2, std::to_string(state.bpm),
-                  state.clock_running ? 4 : 15);
+  draw_right_text(canvas_, 71, 102, 2, std::to_string(state.bpm), state.clock_running ? 4 : 15);
 
   std::string network = state.ssid;
   uint8_t network_color = 2;
@@ -267,11 +200,9 @@ void Ui::header(const UiState& state) {
   }
   draw_right_text(canvas_, 104, 202, 2, network, network_color);
 
-  draw_wifi_icon(canvas_, 204, 2, kWifiIcon, 11, state.wifi,
-                 state.rssi);
+  draw_wifi_icon(canvas_, 204, 2, kWifiIcon, 11, state.wifi, state.rssi);
   draw_sd_icon(canvas_, 217, 2, kSdIcon, 9, state.sd_mounted);
-  draw_battery_icon(canvas_, 228, 2, kBatteryIcon, 11, state.battery,
-                    state.battery_charging);
+  draw_battery_icon(canvas_, 228, 2, kBatteryIcon, 11, state.battery, state.battery_charging);
 }
 
 void Ui::devices(const UiState& state, int, int rows) {
@@ -297,8 +228,7 @@ void Ui::devices(const UiState& state, int, int rows) {
       canvas_.textf(1, y, selected ? 11 : 1, "%u %s", port.slot, trim(label, 18).c_str());
       if (port.ota) canvas_.text(25, y, "OTA", 5);
       if (port.claimed) canvas_.text(25, y, "BUSY", 6);
-      canvas_.text(30, y, state.clock_mask & (1u << port.slot) ? "[x]" : "[ ]",
-                   selected ? 11 : 2);
+      canvas_.text(30, y, state.clock_mask & (1u << port.slot) ? "[x]" : "[ ]", selected ? 11 : 2);
     } else {
       const auto& port = state.msc[static_cast<std::size_t>(index - state.midi.size())];
       canvas_.textf(1, y, selected ? 11 : 1, "M%u ROM %s", port.slot, port.path.c_str());
@@ -331,8 +261,7 @@ void Ui::routes(const UiState& state, int, int rows) {
     for (uint8_t sink = 0; sink < static_cast<uint8_t>(state.midi.size()); ++sink) {
       if (index < static_cast<int>(state.routes.size()) &&
           (state.routes[static_cast<std::size_t>(index)] & (1u << sink)) != 0) {
-        at += std::snprintf(links + at, sizeof(links) - static_cast<std::size_t>(at), "%u ",
-                            sink);
+        at += std::snprintf(links + at, sizeof(links) - static_cast<std::size_t>(at), "%u ", sink);
       }
     }
     canvas_.text(20, y, at == 0 ? "none" : links, selected ? 11 : (at == 0 ? 2 : 4));
@@ -367,8 +296,7 @@ void Ui::clock(const UiState& state, int, int) {
     if (selected) canvas_.fill(0, y * 11, 232, 11, 7);
     std::string label = port.identity.empty() ? ("MIDI " + port.path) : port.identity;
     canvas_.textf(0, y, selected ? 11 : 1, "%c[%c] %u %s", selected ? '>' : ' ',
-                  checkbox(state.clock_mask & (1u << index)), port.slot,
-                  trim(label, 18).c_str());
+                  checkbox(state.clock_mask & (1u << index)), port.slot, trim(label, 18).c_str());
   }
   scrollbar(first, kListRows, total, 55, 44);
 }
@@ -384,9 +312,8 @@ void Ui::library(const UiState& state, int, int rows) {
       canvas_.textf(0, 2, 2, "LIB %zu SD NO %s %s", state.catalog_total,
                     state.device_filter.c_str(), state.chip_filter.c_str());
     } else if (state.local_total > state.local.size()) {
-      canvas_.textf(0, 2, 2, "LIB %zu SD %zu/%zu %s %s", state.catalog_total,
-                    state.local.size(), state.local_total, state.device_filter.c_str(),
-                    state.chip_filter.c_str());
+      canvas_.textf(0, 2, 2, "LIB %zu SD %zu/%zu %s %s", state.catalog_total, state.local.size(),
+                    state.local_total, state.device_filter.c_str(), state.chip_filter.c_str());
     } else {
       canvas_.textf(0, 2, 2, "LIB %zu SD ok %s %s", state.catalog_total,
                     state.device_filter.c_str(), state.chip_filter.c_str());
@@ -401,8 +328,7 @@ void Ui::library(const UiState& state, int, int rows) {
     canvas_.text(1, 6, "or refresh with R.", 2);
     return;
   }
-  const int first = std::clamp(state.selection - rows / 2, 0,
-                               std::max(0, total - rows));
+  const int first = std::clamp(state.selection - rows / 2, 0, std::max(0, total - rows));
   for (int row = 0; row < rows && first + row < total; ++row) {
     const int index = first + row;
     const bool selected = index == state.selection;
@@ -417,8 +343,8 @@ void Ui::library(const UiState& state, int, int rows) {
     } else {
       const auto& entry = state.catalog[static_cast<std::size_t>(index - local_count)];
       const std::size_t catalog_index = static_cast<std::size_t>(index - local_count);
-      const bool installed = catalog_index < state.catalog_installed.size() &&
-                             state.catalog_installed[catalog_index];
+      const bool installed =
+          catalog_index < state.catalog_installed.size() && state.catalog_installed[catalog_index];
       canvas_.text(0, y, selected ? ">" : " ", 2);
       canvas_.text_clipped(1, y, 17, entry.name, selected ? 11 : 1);
       canvas_.textf(19, y, selected ? 11 : 2, "%s", trim(entry.version, 7).c_str());
@@ -440,10 +366,9 @@ void Ui::library(const UiState& state, int, int rows) {
     canvas_.text_clipped(0, 9, 40, entry->author + "  " + entry->tags, 2);
   } else if (state.selection < local_count) {
     const auto& local = state.local[static_cast<std::size_t>(state.selection)];
-    canvas_.text_clipped(0, 8, 40,
-                         local.name + "  " + local.product + "  " +
-                             std::to_string(local.size / 1024) + "K",
-                         1);
+    canvas_.text_clipped(
+        0, 8, 40,
+        local.name + "  " + local.product + "  " + std::to_string(local.size / 1024) + "K", 1);
     const std::string detail = !local.metadata.author.empty()
                                    ? local.metadata.author + "  " + local.metadata.tags
                                    : local.path;
@@ -462,10 +387,17 @@ void Ui::system(const UiState& state) {
 
   const char* wifi = "unconfigured";
   switch (state.wifi_state) {
-    case platform::WifiState::Connected: wifi = "connected"; break;
-    case platform::WifiState::Connecting: wifi = "connecting"; break;
-    case platform::WifiState::Failed: wifi = "failed"; break;
-    default: break;
+    case platform::WifiState::Connected:
+      wifi = "connected";
+      break;
+    case platform::WifiState::Connecting:
+      wifi = "connecting";
+      break;
+    case platform::WifiState::Failed:
+      wifi = "failed";
+      break;
+    default:
+      break;
   }
   canvas_.text(0, 5, "WI-FI", 2);
   canvas_.text(12, 5, wifi, state.wifi_state == platform::WifiState::Connected ? 4 : 1);
@@ -481,8 +413,10 @@ void Ui::system(const UiState& state) {
     canvas_.text(12, 8, "(not connected)", 2);
   }
   canvas_.text(0, 9, "BATTERY", 2);
-  if (state.battery >= 0) canvas_.textf(12, 9, 1, "%d%%", state.battery);
-  else canvas_.text(12, 9, "unknown", 2);
+  if (state.battery >= 0)
+    canvas_.textf(12, 9, 1, "%d%%", state.battery);
+  else
+    canvas_.text(12, 9, "unknown", 2);
   canvas_.text(0, 10, "W wifi  N rename", 5);
 }
 
@@ -500,8 +434,7 @@ void Ui::flash(const UiState& state) {
   int row = 6;
   const int lines = std::min<int>(4, static_cast<int>(state.flash.log.size()));
   for (int i = 0; i < lines; ++i) {
-    canvas_.text_clipped(1, row++, 38,
-                         state.flash.log[state.flash.log.size() - lines + i], 2);
+    canvas_.text_clipped(1, row++, 38, state.flash.log[state.flash.log.size() - lines + i], 2);
   }
 }
 
@@ -513,8 +446,8 @@ void Ui::popup(const UiState& state) {
   canvas_.text_clipped(1, 2, 38, state.popup_title, 11);
   constexpr int kPopupRows = 6;
   const int total = static_cast<int>(state.popup_items.size());
-  const int first = std::clamp(state.popup_selection - kPopupRows / 2, 0,
-                               std::max(0, total - kPopupRows));
+  const int first =
+      std::clamp(state.popup_selection - kPopupRows / 2, 0, std::max(0, total - kPopupRows));
   for (int row = 0; row < kPopupRows && first + row < total; ++row) {
     const int index = first + row;
     const bool selected = index == state.popup_selection;
@@ -548,12 +481,10 @@ void Ui::hoard(const UiState& state) {
   canvas_.clear(0);
   canvas_.fill(0, 0, 240, 11, 3);
   canvas_.text(0, 0, "HOARD", 11);
-  const int overall = state.hoard_total == 0
-                          ? 0
-                          : static_cast<int>(state.hoard_done * 100 / state.hoard_total);
+  const int overall =
+      state.hoard_total == 0 ? 0 : static_cast<int>(state.hoard_done * 100 / state.hoard_total);
   canvas_.textf(30, 0, 11, "%zu/%zu", state.hoard_done, state.hoard_total);
-  canvas_.text(0, 2, overall == 0 ? "Refreshing catalog..." : "Downloading all firmware",
-               1);
+  canvas_.text(0, 2, overall == 0 ? "Refreshing catalog..." : "Downloading all firmware", 1);
   canvas_.fill(5, 33, 230, 10, 8);
   if (overall > 0) canvas_.fill(5, 33, 230 * overall / 100, 10, 4);
   canvas_.textf(36, 3, 1, "%3d%%", overall);
@@ -585,40 +516,41 @@ void Ui::footer(const UiState& state) {
       hint1 = "UP/DN select   ENTER choose";
       hint2 = "ESC cancel";
     }
-  } else switch (state.pane) {
-    case Pane::Devices:
-      if (state.selection < static_cast<int>(state.midi.size())) {
-        hint1 = "1 CLOCK 2 FLASH 3 DOWN";
-        hint2 = "ENTER FLASH  TAB  Fn;/. SEL";
-      } else if (state.selection < static_cast<int>(state.midi.size() + state.msc.size())) {
-        hint1 = "1 ROM";
-        hint2 = "ENTER ROM  TAB  Fn;/. SEL";
-      } else {
-        hint1 = "No device";
+  } else
+    switch (state.pane) {
+      case Pane::Devices:
+        if (state.selection < static_cast<int>(state.midi.size())) {
+          hint1 = "1 CLOCK 2 FLASH 3 DOWN";
+          hint2 = "ENTER FLASH  TAB  Fn;/. SEL";
+        } else if (state.selection < static_cast<int>(state.midi.size() + state.msc.size())) {
+          hint1 = "1 ROM";
+          hint2 = "ENTER ROM  TAB  Fn;/. SEL";
+        } else {
+          hint1 = "No device";
+          hint2 = "TAB pane";
+        }
+        break;
+      case Pane::Routes:
+        hint1 = "1 ROUTE  2 CLEAR";
+        hint2 = "ENTER ROUTE  TAB  Fn;/. SEL";
+        break;
+      case Pane::Clock:
+        hint1 = "1 RUN  2 ALL  3 -BPM  4 +BPM";
+        hint2 = "ENTER TARGET  TAB  Fn;/. SEL";
+        break;
+      case Pane::Library:
+        if (state.editing_filter) {
+          hint1 = "TYPE   ENTER apply   ESC cancel";
+        } else {
+          hint1 = "1 RELOAD 2 LOCAL 3 DEV 4 CHIP";
+          hint2 = "5 HOARD 6 FILTER 7 FLASH ENTER DL";
+        }
+        break;
+      case Pane::System:
+        hint1 = "1 WI-FI  2 NAME";
         hint2 = "TAB pane";
-      }
-      break;
-    case Pane::Routes:
-      hint1 = "1 ROUTE  2 CLEAR";
-      hint2 = "ENTER ROUTE  TAB  Fn;/. SEL";
-      break;
-    case Pane::Clock:
-      hint1 = "1 RUN  2 ALL  3 -BPM  4 +BPM";
-      hint2 = "ENTER TARGET  TAB  Fn;/. SEL";
-      break;
-    case Pane::Library:
-      if (state.editing_filter) {
-        hint1 = "TYPE   ENTER apply   ESC cancel";
-      } else {
-        hint1 = "1 RELOAD 2 LOCAL 3 DEV 4 CHIP";
-        hint2 = "5 HOARD 6 FILTER 7 FLASH ENTER DL";
-      }
-      break;
-    case Pane::System:
-      hint1 = "1 WI-FI  2 NAME";
-      hint2 = "TAB pane";
-      break;
-  }
+        break;
+    }
   canvas_.text_clipped(0, 10, 40, hint1, 1);
   canvas_.text_clipped(0, 11, 40, hint2, 2);
 }
@@ -626,11 +558,21 @@ void Ui::footer(const UiState& state) {
 void Ui::draw(const UiState& state) {
   header(state);
   switch (state.pane) {
-    case Pane::Devices: devices(state, 3, 6); break;
-    case Pane::Routes: routes(state, 3, 6); break;
-    case Pane::Clock: clock(state, 0, 0); break;
-    case Pane::Library: library(state, 3, 5); break;
-    case Pane::System: system(state); break;
+    case Pane::Devices:
+      devices(state, 3, 6);
+      break;
+    case Pane::Routes:
+      routes(state, 3, 6);
+      break;
+    case Pane::Clock:
+      clock(state, 0, 0);
+      break;
+    case Pane::Library:
+      library(state, 3, 5);
+      break;
+    case Pane::System:
+      system(state);
+      break;
   }
   flash(state);
   popup(state);

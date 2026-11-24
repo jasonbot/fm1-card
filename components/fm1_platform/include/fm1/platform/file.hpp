@@ -21,7 +21,9 @@ class FileReader : public package::Reader {
   [[nodiscard]] uint64_t size() const override;
   Result<std::size_t> read_at(uint64_t offset, std::span<uint8_t> dst) override;
   void close();
-  [[nodiscard]] bool is_open() const { return file_ != nullptr; }
+  [[nodiscard]] bool is_open() const {
+    return file_ != nullptr;
+  }
 
  private:
   std::FILE* file_ = nullptr;
