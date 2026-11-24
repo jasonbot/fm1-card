@@ -582,7 +582,7 @@ void Ui::footer(const UiState& state) {
         hint2 = "ENTER FLASH  TAB  Fn;/. SEL";
       } else if (state.selection < static_cast<int>(state.midi.size() + state.msc.size())) {
         hint1 = "1 ROM";
-        hint2 = "TAB  Fn;/. SEL";
+        hint2 = "ENTER ROM  TAB  Fn;/. SEL";
       } else {
         hint1 = "No device";
         hint2 = "TAB pane";
@@ -590,18 +590,18 @@ void Ui::footer(const UiState& state) {
       break;
     case Pane::Routes:
       hint1 = "1 ROUTE  2 CLEAR";
-      hint2 = "TAB  Fn;/. SEL";
+      hint2 = "ENTER ROUTE  TAB  Fn;/. SEL";
       break;
     case Pane::Clock:
       hint1 = "1 RUN  2 ALL  3 -BPM  4 +BPM";
-      hint2 = "5 TARGET  TAB  Fn;/. SEL";
+      hint2 = "ENTER TARGET  TAB  Fn;/. SEL";
       break;
     case Pane::Library:
       if (state.editing_filter) {
         hint1 = "TYPE   ENTER apply   ESC cancel";
       } else {
-        hint1 = "1 RELOAD 2 LOCAL 3 DEVICE";
-        hint2 = "4 CHIP 5 HOARD 6 FILTER 7 FLASH";
+        hint1 = "1 RELOAD 2 LOCAL 3 DEV 4 CHIP";
+        hint2 = "5 HOARD 6 FILTER 7 FLASH ENTER DL";
       }
       break;
     case Pane::System:
