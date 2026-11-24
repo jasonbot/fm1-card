@@ -128,6 +128,9 @@ class App {
   std::vector<platform::LocalPackage> package_choices_;
   std::vector<PackageMeta> package_meta_;
   std::size_t package_offset_ = 0;
+  std::size_t local_offset_ = 0;
+  std::vector<platform::LocalMetadata> installed_metadata_;
+  bool installed_metadata_valid_ = false;
   std::size_t package_total_ = 0;
 
   std::mutex wifi_scan_lock_;
@@ -141,8 +144,8 @@ class App {
   int last_battery_mv_ = -1;
   uint64_t last_battery_check_us_ = 0;
   bool battery_charging_ = false;
+  uint64_t charge_seen_us_ = 0;
   bool filter_refresh_ = false;
-  std::string last_key_;
 
 };
 

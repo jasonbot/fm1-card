@@ -45,6 +45,8 @@ bool works_on_old_chip(const Entry& entry);
 SmkVariant smk_variant_of(const Entry& entry);
 SmkVariant smk_variant_from_product(std::string_view product);
 bool matches_smk_variant(const Entry& entry, SmkVariant variant);
+// True when version `have` is the same or newer than `wanted`.
+bool version_at_least(std::string_view have, std::string_view wanted);
 
 // URL relative to the hub root.
 std::string package_url(const Entry& entry);

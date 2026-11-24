@@ -123,6 +123,35 @@ SmkVariant smk_variant_from_product(std::string_view product) {
   return text.find("smk") != std::string::npos ? SmkVariant::Pro : SmkVariant::All;
 }
 
+bool version_at_least(std::string_view have, std::string_view wanted) {
+  std::size_t a = 0;
+  std::size_t b = 0;
+  while (true) {
+    while (a < have.size() && !std::isalnum(static_cast<unsigned char>(have[a]))) ++a;
+    while (b < wanted.size() && !std::isalnum(static_cast<unsigned char>(wanted[b]))) ++b;
+    if (b == wanted.size()) return true;
+    if (a == have.size()) return false;
+    const std::size_t ae = a;
+    const std::size_t be = b;
+    while (a < have.size() && std::isalnum(static_cast<unsigned char>(have[a]))) ++a;
+    while (b < wanted.size() && std::isalnum(static_cast<unsigned char>(wanted[b]))) ++b;
+    const auto ap = have.substr(ae, a - ae);
+    const auto bp = wanted.substr(be, b - be);
+    const bool an = std::all_of(ap.begin(), ap.end(),
+                                [](char c) { return std::isdigit(static_cast<unsigned char>(c)); });
+    const bool bn = std::all_of(bp.begin(), bp.end(),
+                                [](char c) { return std::isdigit(static_cast<unsigned char>(c)); });
+    if (an && bn) {
+      const auto av = std::strtoul(std::string(ap).c_str(), nullptr, 10);
+      const auto bv = std::strtoul(std::string(bp).c_str(), nullptr, 10);
+      if (av != bv) return av > bv;
+    } else {
+      const int cmp = ap.compare(bp);
+      if (cmp != 0) return cmp > 0;
+    }
+  }
+}
+
 bool matches_smk_variant(const Entry& entry, SmkVariant variant) {
   return variant == SmkVariant::All || smk_variant_of(entry) == variant;
 }

@@ -36,47 +36,6 @@ std::string label_of(const platform::MidiPort& port) {
   return port.identity.empty() ? ("MIDI " + port.path) : port.identity;
 }
 
-std::string lower_text(std::string_view text) {
-  std::string out(text);
-  std::transform(out.begin(), out.end(), out.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return out;
-}
-
-// Compare the numeric/lexical pieces of a firmware version. True when `have`
-// is the same or newer than `wanted`.
-bool version_at_least(std::string_view have, std::string_view wanted) {
-  if (have.empty()) return false;
-  if (wanted.empty()) return true;
-  std::size_t a = 0;
-  std::size_t b = 0;
-  while (a < have.size() || b < wanted.size()) {
-    while (a < have.size() && !std::isalnum(static_cast<unsigned char>(have[a]))) ++a;
-    while (b < wanted.size() && !std::isalnum(static_cast<unsigned char>(wanted[b]))) ++b;
-    const std::size_t ae = a;
-    const std::size_t be = b;
-    while (a < have.size() && std::isalnum(static_cast<unsigned char>(have[a]))) ++a;
-    while (b < wanted.size() && std::isalnum(static_cast<unsigned char>(wanted[b]))) ++b;
-    const auto ap = have.substr(ae, a - ae);
-    const auto bp = wanted.substr(be, b - be);
-    if (ap.empty()) return !bp.empty();
-    if (bp.empty()) return true;
-    const bool an = std::all_of(ap.begin(), ap.end(),
-                                [](char c) { return std::isdigit(static_cast<unsigned char>(c)); });
-    const bool bn = std::all_of(bp.begin(), bp.end(),
-                                [](char c) { return std::isdigit(static_cast<unsigned char>(c)); });
-    if (an && bn) {
-      const auto av = std::strtoul(std::string(ap).c_str(), nullptr, 10);
-      const auto bv = std::strtoul(std::string(bp).c_str(), nullptr, 10);
-      if (av != bv) return av > bv;
-    } else {
-      const auto cmp = ap.compare(bp);
-      if (cmp != 0) return cmp > 0;
-    }
-  }
-  return true;
-}
-
 std::string json_escape(std::string_view text) {
   std::string out;
   out.reserve(text.size() + 8);
@@ -222,7 +181,10 @@ void App::ui_loop() {
   for (;;) {
     while (auto event = keyboard_.poll()) handle_key(*event);
 
-    if (net_.take_library_change()) library_dirty_ = true;
+    if (net_.take_library_change()) {
+      library_dirty_ = true;
+      installed_metadata_valid_ = false;
+    }
     if (library_dirty_.exchange(false)) {
       const bool filter_only = filter_refresh_;
       filter_refresh_ = false;
@@ -531,10 +493,23 @@ void App::net_loop() {
 
 void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
   if (show_wait) show_waiting("READING LIBRARY");
+  if (!installed_metadata_valid_) {
+    installed_metadata_ =
+        library_.local_metadata().value_or(std::vector<platform::LocalMetadata>{});
+    installed_metadata_valid_ = true;
+  }
   if (reload_local) {
     std::size_t local_total = 0;
-    state_.local = library_.local_packages_page(0, 32, &local_total, state_.filter)
+    auto local_page = library_.local_packages_page(local_offset_, 32, &local_total,
+                                                   state_.filter)
+                          .value_or(std::vector<platform::LocalPackage>{});
+    if (local_page.empty() && local_total > 0 && local_offset_ > 0) {
+      local_offset_ = ((local_total - 1) / 32) * 32;
+      local_page = library_.local_packages_page(local_offset_, 32, &local_total,
+                                                state_.filter)
                        .value_or(std::vector<platform::LocalPackage>{});
+    }
+    state_.local = std::move(local_page);
     state_.local_total = local_total;
     if (library_filter_.device) {
       std::erase_if(state_.local, [&](const platform::LocalPackage& local) {
@@ -548,22 +523,13 @@ void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
     }
   }
   library_filter_.text = state_.filter;
-  auto total = library_.count(library_filter_);
+  auto total = library_.count(library_filter_, installed_metadata_);
   catalog_total_ = total.value_or(0);
   const std::size_t page = 20;
   if (!keep_shift && catalog_offset_ > catalog_total_) catalog_offset_ = 0;
-  auto entries = library_.page(library_filter_, catalog_offset_, page);
+  auto entries = library_.page(library_filter_, catalog_offset_, page, installed_metadata_);
   state_.catalog = entries.value_or(std::vector<catalog::Entry>{});
   state_.catalog_total = catalog_total_;
-  const auto installed = library_.local_metadata().value_or(std::vector<platform::LocalMetadata>{});
-  std::erase_if(state_.catalog, [&](const catalog::Entry& entry) {
-    const auto entry_name = lower_text(entry.name);
-    for (const auto& local : installed) {
-      if (lower_text(local.name) != entry_name) continue;
-      if (version_at_least(local.version, entry.version)) return true;
-    }
-    return false;
-  });
   const int max_filtered = static_cast<int>(state_.local.size() + state_.catalog.size()) - 1;
   if (state_.selection > max_filtered) state_.selection = std::max(0, max_filtered);
   state_.catalog_installed.assign(state_.catalog.size(), false);
@@ -634,8 +600,17 @@ void App::sync_ui() {
   if (last_battery_check_us_ == 0 || battery_now - last_battery_check_us_ > 15'000'000) {
     const int mv = battery_.millivolts();
     if (mv >= 0 && last_battery_mv_ >= 0) {
-      if (mv >= last_battery_mv_ + 4) battery_charging_ = true;
-      else if (mv + 4 < last_battery_mv_) battery_charging_ = false;
+      if (mv >= last_battery_mv_ + 4) {
+        battery_charging_ = true;
+        charge_seen_us_ = battery_now;
+      } else if (mv + 4 < last_battery_mv_) {
+        battery_charging_ = false;
+      }
+    }
+    // No charger-status pin on this board: expire a stale inference.
+    if (battery_charging_ && charge_seen_us_ != 0 &&
+        battery_now - charge_seen_us_ > 120'000'000) {
+      battery_charging_ = false;
     }
     if (mv >= 0) last_battery_mv_ = mv;
     last_battery_check_us_ = battery_now;
@@ -749,7 +724,7 @@ void App::sync_ui() {
   json += item;
   json += ",\"hoard\":";
   json += state_.hoard_active ? "true" : "false";
-  json += ",\"key\":\"" + json_escape(last_key_) + "\",\"flash\":{\"running\":";
+  json += ",\"flash\":{\"running\":";
   json += state_.flash.running ? "true" : "false";
   json += ",\"error\":";
   json += state_.flash.error ? "true" : "false";
@@ -1153,6 +1128,7 @@ void App::run_menu_action(int index) {
         else library_filter_.device.reset();
         library_filter_.variant = catalog::SmkVariant::All;
         catalog_offset_ = 0;
+        local_offset_ = 0;
         state_.selection = 0;
         library_dirty_ = true;
       } else if (index == 3) {
@@ -1173,6 +1149,7 @@ void App::run_menu_action(int index) {
                                            : platform::ChipFilter::All;
         }
         catalog_offset_ = 0;
+        local_offset_ = 0;
         state_.selection = 0;
         library_dirty_ = true;
       } else if (index == 4) {
@@ -1387,12 +1364,6 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
 }
 
 void App::handle_key(const platform::KeyEvent& event) {
-  if (event.kind == platform::KeyKind::Press) {
-    char key[48]{};
-    std::snprintf(key, sizeof(key), "c=%d code=%d fn=%d sh=%d", event.character,
-                  static_cast<int>(event.code), event.fn ? 1 : 0, event.shift ? 1 : 0);
-    last_key_ = key;
-  }
   {
     std::lock_guard lock(hoard_lock_);
     if (hoard_.active) {
@@ -1414,6 +1385,7 @@ void App::handle_key(const platform::KeyEvent& event) {
       state_.editing_filter = false;
       filter_refresh_ = true;
       catalog_offset_ = 0;
+      local_offset_ = 0;
       state_.selection = 0;
       library_dirty_ = true;
     } else if (event.code == 0x29) {
@@ -1421,6 +1393,7 @@ void App::handle_key(const platform::KeyEvent& event) {
       filter_refresh_ = true;
       state_.filter.clear();
       catalog_offset_ = 0;
+      local_offset_ = 0;
       state_.selection = 0;
       library_dirty_ = true;
     } else if (event.code == 0x2A) {
@@ -1468,6 +1441,22 @@ void App::handle_key(const platform::KeyEvent& event) {
       }
       constexpr std::size_t kLibraryPage = 20;
       constexpr int kLibrarySkip = 5;
+      if (state_.pane == ui::Pane::Library && event.ctrl &&
+          state_.selection < static_cast<int>(state_.local.size())) {
+        if (delta > 0 && local_offset_ + 32 < state_.local_total) {
+          local_offset_ += 32;
+          state_.selection = 0;
+          library_dirty_ = true;
+        } else if (delta < 0 && local_offset_ >= 32) {
+          local_offset_ -= 32;
+          state_.selection = 0;
+          library_dirty_ = true;
+        } else if (delta > 0 && !state_.catalog.empty()) {
+          state_.selection = static_cast<int>(state_.local.size());
+          dirty_ = true;
+        }
+        break;
+      }
       if (state_.pane == ui::Pane::Library && event.ctrl) {
         const int target = state_.selection + delta * kLibrarySkip;
         if (target < 0) {

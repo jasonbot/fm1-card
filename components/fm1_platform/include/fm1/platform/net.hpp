@@ -51,6 +51,9 @@ class Net {
   [[nodiscard]] bool wifi_connected() const;
   [[nodiscard]] bool wifi_configured() const { return configured_.load(); }
   [[nodiscard]] bool wifi_reconfiguring() const { return reconfiguring_.load(); }
+  [[nodiscard]] bool wifi_retry_allowed() {
+    return wifi_retries_.fetch_add(1) < 5;
+  }
   [[nodiscard]] WifiState wifi_state() const { return state_.load(); }
   [[nodiscard]] std::string wifi_error() const;
   [[nodiscard]] std::string wifi_ssid() const;
@@ -109,6 +112,7 @@ class Net {
   bool started_ = false;
   bool driver_ready_ = false;
   std::atomic<bool> reconfiguring_{false};
+  std::atomic<int> wifi_retries_{0};
 };
 
 }  // namespace fm1::platform

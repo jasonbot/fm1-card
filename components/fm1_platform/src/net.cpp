@@ -45,7 +45,10 @@ void wifi_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     xEventGroupClearBits(group, kWifiConnected | kIp4);
     net->note_disconnected();
-    if (net->wifi_configured() && !net->wifi_reconfiguring()) esp_wifi_connect();
+    if (net->wifi_configured() && !net->wifi_reconfiguring() &&
+        net->wifi_retry_allowed()) {
+      esp_wifi_connect();
+    }
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     xEventGroupSetBits(group, kWifiConnected | kIp4);
     net->note_connected();
@@ -388,6 +391,7 @@ esp_err_t Net::firmware_info(httpd_req_t* request) {
     httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "stat failed");
     return ESP_FAIL;
   }
+  const auto local = read_local_metadata(path);
   auto digest = sha256_file(path, nullptr);
   FileReader reader;
   std::string product;
@@ -408,7 +412,11 @@ esp_err_t Net::firmware_info(httpd_req_t* request) {
   body += digest ? "\"" + *digest + "\"" : "null";
   body += ",\"product\":\"" + json_escape(product) + "\",\"device\":\"" +
           (device == catalog::Device::Smk37 ? "smk37" : "fm1") +
-          "\",\"variant\":\"" + variant_name + "\"}";
+          "\",\"variant\":\"" + variant_name + "\"";
+  body += ",\"title\":\"" + json_escape(local.name) + "\",\"author\":\"" +
+          json_escape(local.author) + "\",\"version\":\"" +
+          json_escape(local.version) + "\",\"description\":\"" +
+          json_escape(local.what) + "\",\"tags\":\"" + json_escape(local.tags) + "\"}";
   set_cors(request);
   httpd_resp_set_type(request, "application/json");
   return httpd_resp_send(request, body.data(), body.size());
@@ -631,6 +639,7 @@ esp_err_t Net::upload_firmware(httpd_req_t* request) {
       metadata.id = metadata.name;
       if (!metadata.version.empty()) metadata.id += "@" + metadata.version;
     }
+    metadata.product = layout->product;
     const bool useful = has_posted || matched.has_value();
     (void)write_local_metadata(final_path, "local:" + name, digest, written,
                                useful ? &metadata : nullptr);
@@ -881,6 +890,7 @@ Result<void> Net::connect_wifi() {
   auto group = static_cast<EventGroupHandle_t>(event_group_);
   if (group == nullptr) return fail("no event group");
   xEventGroupClearBits(group, kWifiConnected | kIp4 | kFail);
+  wifi_retries_.store(0);
   esp_wifi_connect();
   const auto bits = xEventGroupWaitBits(group, kIp4 | kFail, pdFALSE, pdTRUE,
                                         pdMS_TO_TICKS(20'000));
@@ -912,6 +922,7 @@ std::string Net::wifi_error() const {
 }
 
 void Net::note_connected() {
+  wifi_retries_.store(0);
   state_.store(WifiState::Connected);
   std::lock_guard lock(error_lock_);
   wifi_error_.clear();

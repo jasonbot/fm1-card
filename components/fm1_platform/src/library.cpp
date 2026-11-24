@@ -4,14 +4,36 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unordered_map>
 
 #include "fm1/package.hpp"
 #include "fm1/platform/file.hpp"
 
 namespace fm1::platform {
 namespace {
+
+bool same_version_name(std::string_view a, std::string_view b) {
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    if (std::tolower(static_cast<unsigned char>(a[i])) !=
+        std::tolower(static_cast<unsigned char>(b[i]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool installed_hides(const catalog::Entry& entry,
+                     const std::vector<LocalMetadata>& installed) {
+  for (const auto& local : installed) {
+    if (!local.valid || !same_version_name(local.name, entry.name)) continue;
+    if (catalog::version_at_least(local.version, entry.version)) return true;
+  }
+  return false;
+}
 
 std::string meta_safe(std::string_view text) {
   std::string out(text);
@@ -51,8 +73,9 @@ std::string sanitise(std::string_view text) {
 
 }  // namespace
 
-Result<std::vector<catalog::Entry>> Library::page(const LibraryFilter& filter,
-                                                  std::size_t offset, std::size_t limit) {
+Result<std::vector<catalog::Entry>> Library::page(
+    const LibraryFilter& filter, std::size_t offset, std::size_t limit,
+    const std::vector<LocalMetadata>& installed) {
   std::vector<catalog::Entry> out;
   if (!storage_.mounted()) return out;
   std::FILE* file = std::fopen(storage_.path(cache_path()).c_str(), "rb");
@@ -75,13 +98,15 @@ Result<std::vector<catalog::Entry>> Library::page(const LibraryFilter& filter,
     if (filter.chip == ChipFilter::Old && !catalog::works_on_old_chip(*entry)) continue;
     if (!catalog::matches_smk_variant(*entry, filter.variant)) continue;
     if (!catalog::matches(*entry, filter.text)) continue;
+    if (installed_hides(*entry, installed)) continue;
     if (matched++ >= offset) out.push_back(std::move(*entry));
   }
   std::fclose(file);
   return out;
 }
 
-Result<std::size_t> Library::count(const LibraryFilter& filter) {
+Result<std::size_t> Library::count(const LibraryFilter& filter,
+                                   const std::vector<LocalMetadata>& installed) {
   if (!storage_.mounted()) return 0;
   std::FILE* file = std::fopen(storage_.path(cache_path()).c_str(), "rb");
   if (file == nullptr) return 0;
@@ -103,6 +128,7 @@ Result<std::size_t> Library::count(const LibraryFilter& filter) {
     if (filter.chip == ChipFilter::Old && !catalog::works_on_old_chip(*entry)) continue;
     if (!catalog::matches_smk_variant(*entry, filter.variant)) continue;
     if (!catalog::matches(*entry, filter.text)) continue;
+    if (installed_hides(*entry, installed)) continue;
     ++total;
   }
   std::fclose(file);
@@ -158,6 +184,7 @@ Result<std::optional<catalog::Entry>> Library::find(std::string_view id) {
 
 Result<std::vector<LocalMetadata>> Library::local_metadata() {
   std::vector<LocalMetadata> out;
+  std::vector<std::string> paths;
   if (!storage_.mounted()) return out;
   for (const auto& dir : std::array<std::string, 2>{"fm1-card/firmwares", "firmwares"}) {
     DIR* handle = opendir(storage_.path(dir).c_str());
@@ -165,15 +192,47 @@ Result<std::vector<LocalMetadata>> Library::local_metadata() {
     while (dirent* item = readdir(handle)) {
       const std::string name = item->d_name;
       if (name.size() < 6 || name.substr(name.size() - 5) != ".fwsc") continue;
-      auto meta = read_local_metadata(storage_.path(dir + "/" + name));
+      const std::string path = storage_.path(dir + "/" + name);
+      auto meta = read_local_metadata(path);
       if (meta.name.empty()) {
         meta.name = name.substr(0, name.size() - 5);
         for (char& c : meta.name) if (c == '_') c = ' ';
       }
       out.push_back(std::move(meta));
+      paths.push_back(path);
     }
     closedir(handle);
   }
+
+  std::unordered_map<std::string, std::size_t> by_path;
+  for (std::size_t i = 0; i < paths.size(); ++i) by_path.emplace(paths[i], i);
+  (void)for_each([&](const catalog::Entry& entry) {
+    auto path = package_path(entry.id, entry.version);
+    if (!path) return true;
+    const auto found = by_path.find(*path);
+    if (found == by_path.end()) return true;
+    LocalMetadata& meta = out[found->second];
+    struct stat info {};
+    const bool exists = stat(path->c_str(), &info) == 0 && info.st_size > 0;
+    if (meta.name.empty()) {
+      meta.id = entry.id;
+      meta.name = entry.name;
+      meta.version = entry.version;
+      meta.author = entry.author;
+      meta.what = entry.what;
+      meta.tags = entry.tags;
+      meta.product = entry.product;
+      meta.valid = exists;
+      if (meta.size == 0) meta.size = exists ? static_cast<uint64_t>(info.st_size) : 0;
+      if (meta.source.empty()) meta.source = catalog::package_url(entry);
+      (void)write_local_metadata(*path, meta.source, meta.sha256, meta.size, &entry);
+    } else {
+      if (meta.product.empty()) meta.product = entry.product;
+      meta.valid = exists &&
+                   (meta.size == 0 || static_cast<uint64_t>(info.st_size) == meta.size);
+    }
+    return true;
+  });
   return out;
 }
 
@@ -204,6 +263,7 @@ Result<std::vector<LocalPackage>> Library::local_packages_page(
       entry.author = meta.author;
       entry.what = meta.what;
       entry.tags = meta.tags;
+      entry.product = meta.product;
       return !catalog::matches(entry, text);
     });
   }
@@ -220,6 +280,7 @@ Result<std::vector<LocalPackage>> Library::local_packages_page(
       if (c == '_') c = ' ';
     }
     auto metadata = read_local_metadata(paths[i]);
+    if (metadata.product.empty()) metadata.product = layout->product;
     if (!metadata.name.empty()) display = metadata.name;
     out.push_back(LocalPackage{.path = paths[i],
                                .name = std::move(display),
@@ -233,35 +294,24 @@ Result<std::vector<LocalPackage>> Library::local_packages_page(
   return out;
 }
 
-Result<std::vector<LocalPackage>> Library::local_packages(std::size_t limit,
-                                                          std::size_t* total) {
-  return local_packages_page(0, limit, total, {});
-}
-
-Result<std::size_t> Library::local_count() {
-  if (!storage_.mounted()) return 0;
-  std::size_t found = 0;
-  const std::array<std::string, 2> dirs{"fm1-card/firmwares", "firmwares"};
-  for (const auto& dir : dirs) {
-    DIR* handle = opendir(storage_.path(dir).c_str());
-    if (handle == nullptr) continue;
-    while (dirent* item = readdir(handle)) {
-      const std::string name = item->d_name;
-      if (name.size() >= 6 && name.substr(name.size() - 5) == ".fwsc") ++found;
-    }
-    closedir(handle);
-  }
-  return found;
-}
 
 LocalMetadata read_local_metadata(const std::string& package_path) {
   LocalMetadata meta;
   std::FILE* file = std::fopen((package_path + ".meta").c_str(), "rb");
   if (file == nullptr) return meta;
   char line[1024]{};
-  // Keep the original three-line prefix: source, sha256, size.
-  for (int i = 0; i < 3 && std::fgets(line, sizeof(line), file) != nullptr; ++i) {
-  }
+  auto read_line = [&](std::string& out) {
+    if (std::fgets(line, sizeof(line), file) == nullptr) return false;
+    out = line;
+    const auto end = out.find_last_not_of("\r\n");
+    out.resize(end == std::string::npos ? 0 : end + 1);
+    return true;
+  };
+  std::string size_text;
+  read_line(meta.source);
+  read_line(meta.sha256);
+  read_line(size_text);
+  meta.size = std::strtoull(size_text.c_str(), nullptr, 10);
   while (std::fgets(line, sizeof(line), file) != nullptr) {
     std::string text(line);
     const auto newline = text.find_last_not_of("\r\n");
@@ -277,9 +327,15 @@ LocalMetadata read_local_metadata(const std::string& package_path) {
     else if (key == "author") meta.author = value;
     else if (key == "what") meta.what = value;
     else if (key == "tags") meta.tags = value;
+    else if (key == "product") meta.product = value;
   }
   std::fclose(file);
-  meta.present = !meta.name.empty() || !meta.id.empty() || !meta.version.empty();
+  struct stat info {};
+  if (stat(package_path.c_str(), &info) != 0 || info.st_size <= 0) {
+    meta.valid = false;
+  } else {
+    meta.valid = meta.size == 0 || static_cast<uint64_t>(info.st_size) == meta.size;
+  }
   return meta;
 }
 
@@ -287,17 +343,26 @@ Result<void> write_local_metadata(const std::string& package_path, std::string_v
                                   std::string_view sha256, std::size_t size,
                                   const catalog::Entry* entry) {
   const std::string path = package_path + ".meta";
-  std::FILE* file = std::fopen(path.c_str(), "wb");
-  if (file == nullptr) return fail("cannot write " + path);
+  const std::string temp = path + ".tmp";
+  std::FILE* file = std::fopen(temp.c_str(), "wb");
+  if (file == nullptr) return fail("cannot write " + temp);
   std::fprintf(file, "%s\n%s\n%zu\n", std::string(source).c_str(),
                std::string(sha256).c_str(), size);
   if (entry != nullptr) {
-    std::fprintf(file, "id=%s\nname=%s\nversion=%s\nauthor=%s\nwhat=%s\ntags=%s\n",
+    std::fprintf(file,
+                 "id=%s\nname=%s\nversion=%s\nauthor=%s\nwhat=%s\ntags=%s\nproduct=%s\n",
                  meta_safe(entry->id).c_str(), meta_safe(entry->name).c_str(),
                  meta_safe(entry->version).c_str(), meta_safe(entry->author).c_str(),
-                 meta_safe(entry->what).c_str(), meta_safe(entry->tags).c_str());
+                 meta_safe(entry->what).c_str(), meta_safe(entry->tags).c_str(),
+                 meta_safe(entry->product).c_str());
   }
+  std::fflush(file);
   std::fclose(file);
+  std::remove(path.c_str());
+  if (std::rename(temp.c_str(), path.c_str()) != 0) {
+    std::remove(temp.c_str());
+    return fail("cannot replace " + path);
+  }
   return {};
 }
 

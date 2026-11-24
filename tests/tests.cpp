@@ -410,6 +410,11 @@ void test_smk_variant() {
   entry.tags = "other";
   CHECK_EQ(fm1::catalog::smk_variant_of(entry), fm1::catalog::SmkVariant::Pro);
   CHECK(fm1::catalog::matches_smk_variant(entry, fm1::catalog::SmkVariant::Pro));
+  CHECK(fm1::catalog::version_at_least("1.0.1", "1.0"));
+  CHECK(fm1::catalog::version_at_least("1.0", "1.0"));
+  CHECK(!fm1::catalog::version_at_least("1.0", "1.0.1"));
+  CHECK(!fm1::catalog::version_at_least("2026.9", "2026.11"));
+  CHECK(fm1::catalog::version_at_least("2026.11", "2026.9"));
   CHECK_EQ(fm1::catalog::smk_variant_from_product("SMK-37 Elite_016"),
            fm1::catalog::SmkVariant::Elite);
   CHECK_EQ(fm1::catalog::smk_variant_from_product("SMK-37 Pro_016"),

@@ -25,7 +25,11 @@ struct LocalMetadata {
   std::string author;
   std::string what;
   std::string tags;
-  bool present = false;
+  std::string product;
+  std::string source;
+  std::string sha256;
+  uint64_t size = 0;
+  bool valid = false;
 };
 
 struct LocalPackage {
@@ -60,20 +64,19 @@ class Library {
 
   // Scans the cache for entries matching the filter, returning at most `limit`
   // entries starting at `offset`.
-  Result<std::vector<catalog::Entry>> page(const LibraryFilter& filter, std::size_t offset,
-                                           std::size_t limit);
-  Result<std::size_t> count(const LibraryFilter& filter);
+  Result<std::vector<catalog::Entry>> page(
+      const LibraryFilter& filter, std::size_t offset, std::size_t limit,
+      const std::vector<LocalMetadata>& installed = {});
+  Result<std::size_t> count(const LibraryFilter& filter,
+                            const std::vector<LocalMetadata>& installed = {});
   // Calls fn for every cached entry; stop early if fn returns false.
   Result<void> for_each(const std::function<bool(const catalog::Entry&)>& fn);
   Result<std::optional<catalog::Entry>> find(std::string_view id);
   // Inspects at most `limit` files; `total` receives the full count.
-  Result<std::vector<LocalPackage>> local_packages(std::size_t limit = 64,
-                                                   std::size_t* total = nullptr);
   // Sorted window of local packages; only `[offset, offset+limit)` is inspected.
   Result<std::vector<LocalPackage>> local_packages_page(
       std::size_t offset, std::size_t limit, std::size_t* total = nullptr,
       std::string_view text = {});
-  Result<std::size_t> local_count();
   Result<std::vector<LocalMetadata>> local_metadata();
   Result<std::string> package_path(std::string_view id, std::string_view version);
 
