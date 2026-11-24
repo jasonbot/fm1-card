@@ -18,7 +18,7 @@ namespace fm1::ui {
 enum class Pane : uint8_t { Library, Devices, System, Routes, Clock };
 
 struct UiState {
-  Pane pane = Pane::Devices;
+  Pane pane = Pane::Library;
   int selection = 0;
   std::string filter;
   bool editing_filter = false;
