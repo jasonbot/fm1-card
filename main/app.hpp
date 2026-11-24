@@ -101,6 +101,7 @@ class App {
   platform::Keyboard& keyboard_;
   platform::Storage& storage_;
   platform::Battery& battery_;
+  platform::Audio audio_;
   platform::UsbHost& usb_ = platform::UsbHost::instance();
   platform::FlashWorker flash_;
   platform::Net net_;

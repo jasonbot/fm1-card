@@ -60,6 +60,9 @@ class Keyboard {
   [[nodiscard]] bool ready() const {
     return ready_;
   }
+  [[nodiscard]] void* i2c_bus() const {
+    return bus_;
+  }
 
  private:
   Result<void> write(uint8_t reg, uint8_t value);
@@ -91,6 +94,24 @@ class Storage {
 
  private:
   bool mounted_ = false;
+};
+
+enum class Wave : uint8_t { Square, Triangle, Saw };
+
+class Audio {
+ public:
+  Result<void> start(void* i2c_bus);
+  // Queue a short synthesized blip. Never blocks the caller.
+  void beep(uint16_t hz, uint16_t ms, Wave wave = Wave::Square);
+  void chime();
+
+ private:
+  static void task_entry(void* arg);
+
+  void* i2s_tx_ = nullptr;
+  void* codec_ = nullptr;
+  void* queue_ = nullptr;
+  void* task_ = nullptr;
 };
 
 class Battery {

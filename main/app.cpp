@@ -83,6 +83,11 @@ void App::run() {
     ESP_LOGE(kTag, "keyboard: %s", r.error().message.c_str());
     boot_stage("keyboard failed: " + r.error().message, true);
   }
+  if (auto r = audio_.start(keyboard_.i2c_bus()); !r) {
+    ESP_LOGW(kTag, "audio: %s", r.error().message.c_str());
+  } else {
+    audio_.chime();
+  }
   if (auto r = battery_.init(); !r) {
     ESP_LOGE(kTag, "battery: %s", r.error().message.c_str());
   }
@@ -1411,6 +1416,10 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
 }
 
 void App::handle_key(const platform::KeyEvent& event) {
+  if (event.kind == platform::KeyKind::Press) {
+    const uint16_t hz = event.code == 0x28 ? 660 : event.code == 0x29 ? 330 : 990;
+    audio_.beep(hz, 16, platform::Wave::Square);
+  }
   {
     std::lock_guard lock(hoard_lock_);
     if (hoard_.active) {

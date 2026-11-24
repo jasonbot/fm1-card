@@ -5,6 +5,7 @@ idf_component_register(
     "src/file.cpp"
     "src/library.cpp"
     "src/local_meta.cpp"
+    "src/audio.cpp"
     "src/net.cpp"
     "src/usb.cpp"
     "src/flash.cpp"
@@ -31,6 +32,8 @@ idf_component_register(
     esp_driver_spi
     esp_hw_support
     esp_driver_i2c
+    esp_driver_i2s
+    esp_codec_dev
     esp_driver_gpio
     esp_adc
     mbedtls)
