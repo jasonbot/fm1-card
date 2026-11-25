@@ -542,13 +542,7 @@ void Ui::footer(const UiState& state) {
   canvas_.hline(0, 120, 240, 9);
   const char* hint1 = "";
   const char* hint2 = "";
-  if (state.flash.running) {
-    hint1 = "FLASHING - WAIT";
-    hint2 = "";
-  } else if (state.flash.error) {
-    hint1 = "ENTER/ESC close";
-    hint2 = "";
-  } else if (state.popup) {
+  if (state.popup) {
     if (!state.popup_hint.empty()) {
       hint1 = state.popup_hint.c_str();
       hint2 = "";
@@ -556,6 +550,12 @@ void Ui::footer(const UiState& state) {
       hint1 = "UP/DN select   ENTER choose";
       hint2 = "ESC cancel";
     }
+  } else if (state.flash.running) {
+    hint1 = "FLASHING - WAIT";
+    hint2 = "";
+  } else if (state.flash.error) {
+    hint1 = "ENTER/ESC close";
+    hint2 = "";
   } else
     switch (state.pane) {
       case Pane::Devices:

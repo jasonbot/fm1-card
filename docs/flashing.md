@@ -135,6 +135,10 @@ Firmware install from the ROM disk:
 `1 ROM` opens this as **Install firmware**, alongside Backup and Install
 rescue bootloader.
 
+If a MIDI flash fails while the unit still has a MIDI port, the failure dialog
+offers **Try download mode**. That sends `DOWNLOAD_MODE` and leaves the unit
+as a ROM disk, where Install firmware can recover it.
+
 
 ## Software DEBRICK
 

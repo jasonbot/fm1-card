@@ -55,7 +55,8 @@ class App {
     WifiPassword,
     DeviceName,
     FlashTargets,
-    DebrickConfirm
+    DebrickConfirm,
+    FlashFailed
   };
   struct Popup {
     PopupKind kind = PopupKind::None;
@@ -167,6 +168,9 @@ class App {
   uint64_t charge_seen_us_ = 0;
   bool filter_refresh_ = false;
   bool catalog_waiting_ = false;
+  bool last_flash_midi_ = false;
+  bool flash_error_announced_ = false;
+  uint8_t last_flash_slot_ = 0;
 };
 
 }  // namespace fm1

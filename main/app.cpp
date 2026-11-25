@@ -680,6 +680,18 @@ void App::sync_ui() {
   state_.clock_running = clock_.running();
   state_.beat_phase = static_cast<uint32_t>(clock_.tick() % 24);
   state_.flash = flash_.status();
+  if (!state_.flash.error) {
+    flash_error_announced_ = false;
+  } else if (!flash_error_announced_) {
+    flash_error_announced_ = true;
+    if (last_flash_midi_ && usb_.midi_port(last_flash_slot_)) {
+      popup_ = {};
+      popup_.kind = PopupKind::FlashFailed;
+      popup_.title = "FLASH FAILED";
+      popup_.items = {"Try download mode", "Close"};
+      popup_.selection = 0;
+    }
+  }
   state_.wifi = net_.wifi_connected();
   state_.wifi_state = net_.wifi_state();
   state_.ssid = net_.wifi_ssid();
@@ -758,10 +770,13 @@ void App::sync_ui() {
     popup_.items.push_back("ENTER save   ESC cancel");
     popup_.selection = 0;
   }
-  state_.popup_hint =
-      (popup_.kind == PopupKind::Packages || popup_.kind == PopupKind::MscPackages)
-          ? "ESC Back   ENTER Flash"
-          : std::string{};
+  if (popup_.kind == PopupKind::Packages || popup_.kind == PopupKind::MscPackages) {
+    state_.popup_hint = "ESC Back   ENTER Flash";
+  } else if (popup_.kind == PopupKind::FlashFailed) {
+    state_.popup_hint = "ENTER choose   ESC close";
+  } else {
+    state_.popup_hint.clear();
+  }
   state_.popup = popup_.kind != PopupKind::None;
   state_.popup_title = popup_.title;
   state_.popup_items = popup_.items;
@@ -1266,10 +1281,21 @@ void App::run_popup_action() {
       start_flash(platform::FlashKind::InstallBootloader, static_cast<uint8_t>(popup_.context), {});
     }
     popup_ = {};
+  } else if (popup_.kind == PopupKind::FlashFailed) {
+    if (popup_.selection == 0) {
+      start_flash(platform::FlashKind::DownloadMode, last_flash_slot_, {});
+    } else {
+      flash_.clear();
+      dirty_ = true;
+    }
+    popup_ = {};
   }
 }
 
 void App::start_flash(platform::FlashKind kind, uint8_t slot, const std::string& package) {
+  last_flash_midi_ = kind == platform::FlashKind::Normal || kind == platform::FlashKind::Rescue;
+  last_flash_slot_ = slot;
+  flash_error_announced_ = false;
   show_waiting("STARTING FLASH");
   router_.set_clock(slot, false);
   platform::FlashJob job{.kind = kind, .slot = slot, .package_path = package, .output_path = {}};
@@ -1387,6 +1413,26 @@ void App::run_menu_action(int index) {
 
 void App::handle_popup_key(const platform::KeyEvent& event) {
   if (event.kind != platform::KeyKind::Press) return;
+  if (popup_.kind == PopupKind::FlashFailed) {
+    if (event.code == 0x29) {
+      popup_ = {};
+      flash_.clear();
+      dirty_ = true;
+      return;
+    }
+    if (event.code == 0x52 || event.code == 0x51) {
+      const int delta = event.code == 0x52 ? -1 : 1;
+      popup_.selection = std::clamp(popup_.selection + delta, 0,
+                                    std::max(0, static_cast<int>(popup_.items.size()) - 1));
+      dirty_ = true;
+      return;
+    }
+    if (event.code == 0x28) {
+      run_popup_action();
+      dirty_ = true;
+    }
+    return;
+  }
   if (popup_.kind == PopupKind::WifiNetworks) {
     if (event.code == 0x29) {
       popup_ = {};
@@ -1585,7 +1631,8 @@ void App::handle_key(platform::KeyEvent event) {
       return;
     }
   }
-  if (event.kind == platform::KeyKind::Press && state_.flash.error && !state_.flash.running &&
+  if (popup_.kind == PopupKind::None && event.kind == platform::KeyKind::Press &&
+      state_.flash.error && !state_.flash.running &&
       (event.code == 0x28 || event.code == 0x29)) {
     flash_.clear();
     dirty_ = true;
