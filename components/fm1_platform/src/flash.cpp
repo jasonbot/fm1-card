@@ -353,7 +353,20 @@ void FlashWorker::run(const FlashJob& job) {
       } else if (!usb_->send_sysex(job.slot, fm1::midi::kDownloadMode)) {
         result = fail("could not send the download-mode command");
       } else {
-        publish("download mode requested: the ROM disk will appear");
+        publish("waiting for the ROM disk", 0);
+        bool appeared = false;
+        for (int attempt = 0; attempt < 150; ++attempt) {
+          if (!usb_->msc_ports().empty()) {
+            appeared = true;
+            break;
+          }
+          vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (appeared) {
+          publish("ROM disk ready", 100);
+        } else {
+          result = fail("the ROM disk did not appear; reconnect and retry");
+        }
       }
       break;
     }

@@ -683,8 +683,17 @@ void App::sync_ui() {
   if (!state_.flash.error) {
     flash_error_announced_ = false;
   } else if (!flash_error_announced_) {
-    flash_error_announced_ = true;
-    if (last_flash_midi_ && usb_.midi_port(last_flash_slot_)) {
+    const auto msc = usb_.msc_ports();
+    if (!last_flash_package_.empty() && !msc.empty()) {
+      flash_error_announced_ = true;
+      popup_ = {};
+      popup_.kind = PopupKind::FlashFailed;
+      popup_.title = "FLASH FAILED";
+      popup_.items = {"Install firmware on ROM disk", "Close"};
+      popup_.values = {msc.front().slot};
+      popup_.selection = 0;
+    } else if (last_flash_midi_ && usb_.midi_port(last_flash_slot_)) {
+      flash_error_announced_ = true;
       popup_ = {};
       popup_.kind = PopupKind::FlashFailed;
       popup_.title = "FLASH FAILED";
@@ -1282,8 +1291,13 @@ void App::run_popup_action() {
     }
     popup_ = {};
   } else if (popup_.kind == PopupKind::FlashFailed) {
-    if (popup_.selection == 0) {
+    if (popup_.selection == 0 && !popup_.values.empty()) {
+      start_flash(platform::FlashKind::InstallFirmware, static_cast<uint8_t>(popup_.values.front()),
+                  last_flash_package_);
+    } else if (popup_.selection == 0) {
       start_flash(platform::FlashKind::DownloadMode, last_flash_slot_, {});
+      set_message("Download mode requested: wait for the ROM disk, then 1 ROM > Install firmware",
+                  false, 20'000);
     } else {
       flash_.clear();
       dirty_ = true;
@@ -1293,12 +1307,19 @@ void App::run_popup_action() {
 }
 
 void App::start_flash(platform::FlashKind kind, uint8_t slot, const std::string& package) {
+  const std::string package_path = package;
   last_flash_midi_ = kind == platform::FlashKind::Normal || kind == platform::FlashKind::Rescue;
   last_flash_slot_ = slot;
+  if (last_flash_midi_) {
+    last_flash_package_ = package;
+  } else if (kind != platform::FlashKind::DownloadMode) {
+    last_flash_package_.clear();
+  }
   flash_error_announced_ = false;
   show_waiting("STARTING FLASH");
   router_.set_clock(slot, false);
-  platform::FlashJob job{.kind = kind, .slot = slot, .package_path = package, .output_path = {}};
+  platform::FlashJob job{
+      .kind = kind, .slot = slot, .package_path = package_path, .output_path = {}};
   if (!flash_.submit(job)) {
     set_message("A flash is already running", true);
     return;
@@ -1315,9 +1336,11 @@ void App::run_menu_action(int index) {
           router_.set_clock(slot, !router_.clock_enabled(slot));
         else if (index == 1)
           open_packages(slot);
-        else if (index == 2)
+        else if (index == 2) {
           start_flash(platform::FlashKind::DownloadMode, slot, {});
-        else if (index > 2)
+          set_message("Download mode: wait for the ROM disk, then 1 ROM > Install firmware", false,
+                      20'000);
+        } else if (index > 2)
           set_message("Only MIDI devices can flash", true);
       } else if (index == 0) {
         const auto msc = static_cast<std::size_t>(state_.selection - state_.midi.size());

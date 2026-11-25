@@ -171,6 +171,7 @@ class App {
   bool last_flash_midi_ = false;
   bool flash_error_announced_ = false;
   uint8_t last_flash_slot_ = 0;
+  std::string last_flash_package_;
 };
 
 }  // namespace fm1
