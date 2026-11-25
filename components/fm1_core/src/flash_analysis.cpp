@@ -268,10 +268,13 @@ Analysis analyze(std::span<const uint8_t> flash, uint32_t flash_id, uint16_t chi
   return result;
 }
 
-Result<std::vector<uint8_t>> build_boot_area(std::span<const uint8_t> flash,
-                                             std::span<const uint8_t> bootloader) {
+Result<void> build_boot_area(std::span<const uint8_t> flash, std::span<const uint8_t> bootloader,
+                             std::span<uint8_t> area) {
   if (flash.size() < kBootArea) {
     return fail("the boot area is incomplete");
+  }
+  if (area.size() < kBootArea) {
+    return fail("the output boot area is incomplete");
   }
   const auto identity = bootloader_identity(bootloader);
   if (!identity) {
@@ -300,7 +303,7 @@ Result<std::vector<uint8_t>> build_boot_area(std::span<const uint8_t> flash,
     return fail("the unit's chip-key record is damaged");
   }
 
-  std::vector<uint8_t> area(kBootArea, 0xFF);
+  std::fill_n(area.begin(), kBootArea, 0xFF);
   std::copy_n(flash.begin(), kBootAt, area.begin());
 
   auto entry0 = table[0].raw;
@@ -322,9 +325,20 @@ Result<std::vector<uint8_t>> build_boot_area(std::span<const uint8_t> flash,
 
   const auto boot_head = encrypt(bootloader.subspan(0, 16), 0xFFFF);
   std::copy(boot_head.begin(), boot_head.end(), area.begin() + kBootAt);
-  const auto boot_rest = encrypt(bootloader.subspan(16), 0xFFFF);
-  std::copy(boot_rest.begin(), boot_rest.end(), area.begin() + kBootAt + 16);
+  uint16_t key_state = 0xFFFF;
+  for (std::size_t i = 16; i < bootloader.size(); ++i) {
+    area[kBootAt + i] = static_cast<uint8_t>(bootloader[i] ^ (key_state & 0xFF));
+    key_state = static_cast<uint16_t>((key_state << 1) ^ ((key_state & 0x8000) != 0 ? 0x1021 : 0));
+  }
   std::copy(config.begin(), config.end(), area.begin() + static_cast<std::ptrdiff_t>(config_at));
+  return {};
+}
+
+Result<std::vector<uint8_t>> build_boot_area(std::span<const uint8_t> flash,
+                                             std::span<const uint8_t> bootloader) {
+  std::vector<uint8_t> area(kBootArea, 0xFF);
+  auto built = build_boot_area(flash, bootloader, area);
+  if (!built) return std::unexpected(built.error());
   return area;
 }
 

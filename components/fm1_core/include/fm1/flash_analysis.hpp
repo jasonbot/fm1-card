@@ -37,5 +37,8 @@ std::optional<std::pair<std::string, std::string>> bootloader_identity(
 
 Result<std::vector<uint8_t>> build_boot_area(std::span<const uint8_t> flash,
                                              std::span<const uint8_t> bootloader);
+// Same build, writing into caller storage instead of allocating 16 KiB.
+Result<void> build_boot_area(std::span<const uint8_t> flash, std::span<const uint8_t> bootloader,
+                             std::span<uint8_t> area);
 
 }  // namespace fm1::flash
