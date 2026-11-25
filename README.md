@@ -200,8 +200,9 @@ number to run it. There are no mnemonic shortcuts.
 
 - **Devices**: `↑`/`↓` select; `1 CLOCK` toggles the clock target,
   `2 FLASH` opens the local package picker, `3 DOWN` sends download mode.
-  On a ROM disk, `1 ROM` opens Backup / Install-rescue-bootloader. `Enter` on
-  a live MIDI device opens the flash picker.
+  On a ROM disk, `1 ROM` opens Install-firmware / Backup /
+  Install-rescue-bootloader. `Enter` on a live MIDI device opens the flash
+  picker.
 - **Library**: `1 DEVICE` and `2 CHIP` cycle filters, `3 FILTER` edits the
   text filter, `4 FLASH` sends the selected installed package to a connected
   device, and `5 HOARD` downloads everything.

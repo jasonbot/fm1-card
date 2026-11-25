@@ -122,6 +122,19 @@ Rescue-bootloader install:
 Refuse to write if the model cannot be identified or the existing table
 would be overwritten outside the boot area. The backup is the escape hatch.
 
+Firmware install from the ROM disk:
+
+1. Parse the selected `.fwsc` and its UFW `flash.bin` entry.
+2. Read the unit's boot area and identify its board/model; reject a package
+   for the wrong model.
+3. Save the full flash backup, then erase and write only
+   `0x4000..0x92FFF` from the package.
+4. Read back every sector and compare the application-region hash before
+   reporting success.
+
+`1 ROM` opens this as **Install firmware**, alongside Backup and Install
+rescue bootloader.
+
 
 ## Software DEBRICK
 

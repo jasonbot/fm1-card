@@ -47,6 +47,7 @@ class App {
   enum class PopupKind {
     None,
     Packages,
+    MscPackages,
     Sinks,
     MscActions,
     HoardConfirm,
@@ -81,6 +82,7 @@ class App {
   void toggle_clock();
   void set_bpm(int delta);
   void open_packages(int slot);
+  void open_msc_packages(int slot);
   void open_flash_targets(int local_index);
   void start_debrick();
   void load_filters(const platform::Config& config);

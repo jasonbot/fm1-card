@@ -20,6 +20,7 @@ enum class FlashKind : uint8_t {
   InstallBootloader,
   Backup,
   Unbrick,
+  InstallFirmware,
 };
 
 struct FlashJob {
@@ -52,6 +53,8 @@ class FlashWorker {
   Result<void> normal(const FlashJob& job);
   Result<void> rescue(const FlashJob& job);
   Result<void> unbrick(const FlashJob& job);
+  Result<void> install_firmware(const FlashJob& job);
+  Result<void> write_rom(const FlashJob& job, bool v15_only);
   Result<void> install_bootloader(const FlashJob& job);
   Result<void> backup(const FlashJob& job);
 

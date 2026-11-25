@@ -758,7 +758,10 @@ void App::sync_ui() {
     popup_.items.push_back("ENTER save   ESC cancel");
     popup_.selection = 0;
   }
-  state_.popup_hint = popup_.kind == PopupKind::Packages ? "ESC Back   ENTER Flash" : std::string{};
+  state_.popup_hint =
+      (popup_.kind == PopupKind::Packages || popup_.kind == PopupKind::MscPackages)
+          ? "ESC Back   ENTER Flash"
+          : std::string{};
   state_.popup = popup_.kind != PopupKind::None;
   state_.popup_title = popup_.title;
   state_.popup_items = popup_.items;
@@ -899,6 +902,23 @@ void App::open_packages(int slot) {
   dirty_ = true;
 }
 
+void App::open_msc_packages(int slot) {
+  if (!usb_.msc_port(slot)) {
+    set_message("That ROM disk is gone", true);
+    return;
+  }
+  popup_ = {};
+  popup_.kind = PopupKind::MscPackages;
+  popup_.context = slot;
+  load_package_page(0);
+  if (package_total_ == 0) {
+    popup_ = {};
+    set_message("No local packages: download or upload one first", true);
+    return;
+  }
+  dirty_ = true;
+}
+
 void App::load_package_page(std::size_t offset) {
   show_waiting("READING FIRMWARE LIST");
   std::size_t total = 0;
@@ -942,14 +962,18 @@ void App::load_package_metadata() {
 }
 
 void App::build_package_popup() {
-  auto port = usb_.midi_port(static_cast<uint8_t>(popup_.context));
-  if (!port) return;
+  std::optional<platform::MidiPort> port;
+  if (popup_.kind == PopupKind::Packages) {
+    port = usb_.midi_port(static_cast<uint8_t>(popup_.context));
+    if (!port) return;
+  }
   popup_.items.clear();
   popup_.values.clear();
   popup_.paths.clear();
   for (std::size_t choice = 0; choice < package_choices_.size(); ++choice) {
     const auto& local = package_choices_[choice];
-    if (!port->identity.empty() && !identity::package_fits(port->identity, local.product)) {
+    if (port && !port->identity.empty() &&
+        !identity::package_fits(port->identity, local.product)) {
       continue;
     }
     if (library_filter_.device && local.device != *library_filter_.device) continue;
@@ -1131,7 +1155,7 @@ void App::open_msc_actions(int slot) {
   popup_.kind = PopupKind::MscActions;
   popup_.title = "ROM DISK " + std::to_string(slot);
   popup_.context = slot;
-  popup_.items = {"Backup full flash", "Install rescue bootloader"};
+  popup_.items = {"Install firmware", "Backup full flash", "Install rescue bootloader"};
   dirty_ = true;
 }
 
@@ -1165,7 +1189,7 @@ void App::open_name_dialog() {
 }
 
 void App::run_popup_action() {
-  if (popup_.kind == PopupKind::Packages) {
+  if (popup_.kind == PopupKind::Packages || popup_.kind == PopupKind::MscPackages) {
     if (popup_.selection < 0 || popup_.selection >= static_cast<int>(popup_.values.size())) {
       popup_ = {};
       return;
@@ -1176,9 +1200,14 @@ void App::run_popup_action() {
       return;
     }
     const std::string& path = package_choices_[static_cast<std::size_t>(choice)].path;
-    auto port = usb_.midi_port(static_cast<uint8_t>(popup_.context));
-    const auto kind = (port && !port->identity.empty()) ? platform::FlashKind::Normal
-                                                        : platform::FlashKind::Rescue;
+    platform::FlashKind kind;
+    if (popup_.kind == PopupKind::MscPackages) {
+      kind = platform::FlashKind::InstallFirmware;
+    } else {
+      auto port = usb_.midi_port(static_cast<uint8_t>(popup_.context));
+      kind = (port && !port->identity.empty()) ? platform::FlashKind::Normal
+                                               : platform::FlashKind::Rescue;
+    }
     start_flash(kind, static_cast<uint8_t>(popup_.context), path);
     popup_ = {};
   } else if (popup_.kind == PopupKind::Sinks) {
@@ -1228,6 +1257,10 @@ void App::run_popup_action() {
     popup_ = {};
   } else if (popup_.kind == PopupKind::MscActions) {
     if (popup_.selection == 0) {
+      open_msc_packages(popup_.context);
+      return;
+    }
+    if (popup_.selection == 1) {
       start_flash(platform::FlashKind::Backup, static_cast<uint8_t>(popup_.context), {});
     } else {
       start_flash(platform::FlashKind::InstallBootloader, static_cast<uint8_t>(popup_.context), {});
@@ -1415,7 +1448,7 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
     }
     return;
   }
-  if (popup_.kind == PopupKind::Packages) {
+  if (popup_.kind == PopupKind::Packages || popup_.kind == PopupKind::MscPackages) {
     if (event.character == 't' || event.character == 'T') {
       if (!library_filter_.device) {
         library_filter_.device = catalog::Device::Fm1;

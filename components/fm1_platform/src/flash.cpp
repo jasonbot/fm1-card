@@ -366,6 +366,9 @@ void FlashWorker::run(const FlashJob& job) {
     case FlashKind::Unbrick:
       result = unbrick(job);
       break;
+    case FlashKind::InstallFirmware:
+      result = install_firmware(job);
+      break;
   }
   if (!result) {
     publish(result.error().message, -1, true);
@@ -570,6 +573,14 @@ Result<void> FlashWorker::rescue(const FlashJob& job) {
 }
 
 Result<void> FlashWorker::unbrick(const FlashJob& job) {
+  return write_rom(job, true);
+}
+
+Result<void> FlashWorker::install_firmware(const FlashJob& job) {
+  return write_rom(job, false);
+}
+
+Result<void> FlashWorker::write_rom(const FlashJob& job, bool v15_only) {
   auto msc = usb_->msc_port(job.slot);
   if (!msc) return fail("the WL82 UBOOT disk is not connected");
   FileReader reader;
@@ -581,7 +592,7 @@ Result<void> FlashWorker::unbrick(const FlashJob& job) {
   if (!flash_part) return std::unexpected(flash_part.error());
   auto expected = region_hash(image, *flash_part);
   if (!expected) return std::unexpected(expected.error());
-  if (*expected != kV15Hash) {
+  if (v15_only && *expected != kV15Hash) {
     return fail("DEBRICK requires the official FM-1 V15 firmware region");
   }
 
@@ -589,13 +600,30 @@ Result<void> FlashWorker::unbrick(const FlashJob& job) {
   wl82::Loader loader(transport, [&](std::string_view text) { publish(std::string(text)); });
   auto opened = loader.open(bytes(_binary_mflr_loader_a_bin_start, _binary_mflr_loader_a_bin_end));
   if (!opened) return opened;
-  if (loader.chip_key() != kFm1ChipKey ||
-      (loader.flash_id() != kFm1FlashId && loader.flash_id() != kFm1FlashId2)) {
-    return fail("not an FM-1 flash (chip key or flash ID mismatch)");
+  if (v15_only) {
+    if (loader.chip_key() != kFm1ChipKey ||
+        (loader.flash_id() != kFm1FlashId && loader.flash_id() != kFm1FlashId2)) {
+      return fail("not an FM-1 flash (chip key or flash ID mismatch)");
+    }
+  } else {
+    auto boot = loader.read(0, flash::kBootArea);
+    if (!boot) return std::unexpected(boot.error());
+    const auto analysis = flash::analyze(*boot, loader.flash_id(), loader.chip_key());
+    if (!analysis.model_known) {
+      return fail("the unit's model could not be identified; nothing was written");
+    }
+    const std::string package_model = model_of(layout->product);
+    const bool model_fits =
+        (analysis.board_key == "fm1" && (package_model == "FM-1" || package_model == "MiniFM")) ||
+        (analysis.board_key == "smk37" && package_model.starts_with("SMK-37"));
+    if (!model_fits) {
+      return fail("the package is for " + package_model + ", the unit is " + analysis.model);
+    }
   }
 
   (void)storage_->ensure_dir("fm1-card/backups");
-  const std::string backup = storage_->path("fm1-card/backups/unbrick-" + timestamp() + ".bin");
+  const std::string backup = storage_->path(
+      "fm1-card/backups/" + std::string(v15_only ? "unbrick-" : "install-") + timestamp() + ".bin");
   std::FILE* dump = std::fopen(backup.c_str(), "wb");
   if (dump == nullptr) return fail("cannot create " + backup);
 
@@ -666,8 +694,12 @@ Result<void> FlashWorker::unbrick(const FlashJob& job) {
     if (!data) return std::unexpected(data.error());
     firmware.update(*data);
   }
-  if (firmware.finish() != kV15Hash) return fail("restored firmware hash mismatch");
-  publish("debrick complete: official V15 restored", 100);
+  if (firmware.finish() != *expected) {
+    return fail(v15_only ? "restored firmware hash mismatch" : "written firmware hash mismatch");
+  }
+  publish(v15_only ? "debrick complete: official V15 restored"
+                   : "firmware installed: " + layout->product,
+          100);
   return {};
 }
 
