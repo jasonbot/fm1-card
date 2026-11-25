@@ -147,6 +147,24 @@ constexpr std::uint32_t kFm1FlashId2 = 0xB36014;
 constexpr std::string_view kV15Hash =
     "6edf3c37fb5bbbc33607c89375ee024d5477c17914d72221c8c68e58a8255686";
 
+std::string board_key_for(std::uint32_t flash_id) {
+  if (flash_id == 0x856014 || flash_id == 0xB36014) return "fm1";
+  if (flash_id == 0xEB6014) return "smk37";
+  return {};
+}
+
+std::array<std::uint8_t, flash::kBootArea> g_boot_area{};
+
+Result<void> read_boot_area(wl82::Loader& loader) {
+  for (std::size_t at = 0; at < g_boot_area.size(); at += kSector) {
+    auto chunk =
+        loader.read(static_cast<std::uint32_t>(at), std::min(kSector, g_boot_area.size() - at));
+    if (!chunk) return std::unexpected(chunk.error());
+    std::copy(chunk->begin(), chunk->end(), g_boot_area.begin() + static_cast<std::ptrdiff_t>(at));
+  }
+  return {};
+}
+
 std::string hex_digest(std::span<const std::uint8_t> bytes) {
   static constexpr char digits[] = "0123456789abcdef";
   std::string out;
@@ -619,18 +637,17 @@ Result<void> FlashWorker::write_rom(const FlashJob& job, bool v15_only) {
       return fail("not an FM-1 flash (chip key or flash ID mismatch)");
     }
   } else {
-    auto boot = loader.read(0, flash::kBootArea);
-    if (!boot) return std::unexpected(boot.error());
-    const auto analysis = flash::analyze(*boot, loader.flash_id(), loader.chip_key());
-    if (!analysis.model_known) {
+    const std::string board = board_key_for(loader.flash_id());
+    if (board.empty()) {
       return fail("the unit's model could not be identified; nothing was written");
     }
     const std::string package_model = model_of(layout->product);
     const bool model_fits =
-        (analysis.board_key == "fm1" && (package_model == "FM-1" || package_model == "MiniFM")) ||
-        (analysis.board_key == "smk37" && package_model.starts_with("SMK-37"));
+        (board == "fm1" && (package_model == "FM-1" || package_model == "MiniFM")) ||
+        (board == "smk37" && package_model.starts_with("SMK-37"));
     if (!model_fits) {
-      return fail("the package is for " + package_model + ", the unit is " + analysis.model);
+      return fail("the package is for " + package_model + ", the unit is " +
+                  (board == "fm1" ? "FM-1" : "SMK-37 Pro / Elite"));
     }
   }
 
@@ -732,7 +749,7 @@ Result<void> FlashWorker::backup(const FlashJob& job) {
   if (file == nullptr) return fail("cannot create " + path);
 
   uint32_t crc = 0;
-  constexpr std::size_t kChunk = 64 * 1024;
+  constexpr std::size_t kChunk = 4 * 1024;
   for (std::size_t at = 0; at < wl82::kFlashSize; at += kChunk) {
     auto chunk = loader.read(static_cast<uint32_t>(at), kChunk);
     if (!chunk) {
@@ -765,16 +782,15 @@ Result<void> FlashWorker::install_bootloader(const FlashJob& job) {
   auto opened = loader.open(bytes(_binary_mflr_loader_a_bin_start, _binary_mflr_loader_a_bin_end));
   if (!opened) return opened;
 
-  auto boot_area = loader.read(0, flash::kBootArea);
-  if (!boot_area) return std::unexpected(boot_area.error());
-  auto analysis = flash::analyze(*boot_area, loader.flash_id(), loader.chip_key());
-  if (!analysis.model_known) {
+  if (auto read = read_boot_area(loader); !read) return read;
+  const std::string board = board_key_for(loader.flash_id());
+  if (board.empty()) {
     return fail("the unit's model could not be identified; nothing was written");
   }
 
   const std::string backup_path =
       job.output_path.empty()
-          ? storage_->path("fm1-card/backups/" + analysis.board_key + "-" + timestamp() + ".bin")
+          ? storage_->path("fm1-card/backups/" + board + "-" + timestamp() + ".bin")
           : job.output_path;
   FlashJob read_job = job;
   read_job.output_path = backup_path;
@@ -782,15 +798,13 @@ Result<void> FlashWorker::install_bootloader(const FlashJob& job) {
   if (!saved) return saved;
 
   std::span<const uint8_t> bootloader;
-  if (analysis.board_key == "fm1") {
+  if (board == "fm1") {
     bootloader = bytes(_binary_bootloader_fm1_boot_start, _binary_bootloader_fm1_boot_end);
-  } else if (analysis.board_key == "smk37") {
-    bootloader = bytes(_binary_bootloader_smk37_boot_start, _binary_bootloader_smk37_boot_end);
   } else {
-    return fail("no bootloader for " + analysis.board_key);
+    bootloader = bytes(_binary_bootloader_smk37_boot_start, _binary_bootloader_smk37_boot_end);
   }
 
-  auto area = flash::build_boot_area(*boot_area, bootloader);
+  auto area = flash::build_boot_area(g_boot_area, bootloader);
   if (!area) return std::unexpected(area.error());
   publish("erasing the boot area", 0);
   auto erased = loader.erase(0, flash::kBootArea);
