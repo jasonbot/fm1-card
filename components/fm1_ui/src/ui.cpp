@@ -542,8 +542,11 @@ void Ui::footer(const UiState& state) {
   canvas_.hline(0, 120, 240, 9);
   const char* hint1 = "";
   const char* hint2 = "";
-  if (state.flash.running || state.flash.error) {
+  if (state.flash.running) {
     hint1 = "FLASHING - WAIT";
+    hint2 = "";
+  } else if (state.flash.error) {
+    hint1 = "ENTER/ESC close";
     hint2 = "";
   } else if (state.popup) {
     if (!state.popup_hint.empty()) {

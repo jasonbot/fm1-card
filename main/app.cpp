@@ -1552,6 +1552,12 @@ void App::handle_key(platform::KeyEvent event) {
       return;
     }
   }
+  if (event.kind == platform::KeyKind::Press && state_.flash.error && !state_.flash.running &&
+      (event.code == 0x28 || event.code == 0x29)) {
+    flash_.clear();
+    dirty_ = true;
+    return;
+  }
   if (popup_.kind != PopupKind::None) {
     if (popup_.kind != PopupKind::WifiPassword && popup_.kind != PopupKind::DeviceName) {
       (void)remap_bare_arrow(event);
