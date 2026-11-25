@@ -573,14 +573,14 @@ void Ui::footer(const UiState& state) {
         break;
       case Pane::Clock:
         hint1 = "1 RUN  2 ALL  3 -BPM  4 +BPM";
-        hint2 = "ENTER TARGET  TAB  Fn;/. SEL";
+        hint2 = "ENTER TARGET    TAB  Fn;/. SEL";
         break;
       case Pane::Library:
         if (state.editing_filter) {
           hint1 = "TYPE   ENTER apply   ESC cancel";
         } else {
-          hint1 = "1 DEV 2 CHIP 3 FILTER 4 FLASH";
-          hint2 = "5 HOARD  TAB  ENTER DL";
+          hint1 = "1 DEVICE 2 CHIP 3 SEARCH 4 FLASH";
+          hint2 = "5 HOARD    TAB  ENTER DL";
         }
         break;
       case Pane::System:
