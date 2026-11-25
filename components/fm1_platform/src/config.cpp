@@ -14,6 +14,9 @@ constexpr const char* kTemplate =
     "{\n"
     "  \"device_name\": \"Cardputer\",\n"
     "  \"theme_blue\": \"#000083\",\n"
+    "  \"library_device\": \"ALL\",\n"
+    "  \"library_chip\": \"ALL\",\n"
+    "  \"library_name\": \"\",\n"
     "  \"wifi\": { \"ssid\": \"\", \"password\": \"\" }\n"
     "}\n";
 
@@ -89,6 +92,9 @@ Result<Config> load_config(Storage& storage) {
   if (const auto blue = parse_hex_color(value_of(lwjson_find(&json, "theme_blue")))) {
     config.theme_blue = format_hex_color(*blue);
   }
+  config.library_device = value_of(lwjson_find(&json, "library_device"));
+  config.library_chip = value_of(lwjson_find(&json, "library_chip"));
+  config.library_name = value_of(lwjson_find(&json, "library_name"));
   const auto* wifi = lwjson_find(&json, "wifi");
   if (wifi != nullptr) {
     config.ssid = value_of(lwjson_find_ex(&json, wifi, "ssid"));
@@ -123,6 +129,12 @@ Result<void> save_config(Storage& storage, const Config& config) {
   text += json_escape(normalize_device_name(config.device_name));
   text += "\",\n  \"theme_blue\": \"";
   text += json_escape(config.theme_blue);
+  text += "\",\n  \"library_device\": \"";
+  text += json_escape(config.library_device);
+  text += "\",\n  \"library_chip\": \"";
+  text += json_escape(config.library_chip);
+  text += "\",\n  \"library_name\": \"";
+  text += json_escape(config.library_name);
   text += "\",\n  \"wifi\": { \"ssid\": \"";
   text += json_escape(config.ssid);
   text += "\", \"password\": \"";

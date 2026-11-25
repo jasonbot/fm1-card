@@ -1,0 +1,98 @@
+{ "frames": {
+   "device-indicator (Background).aseprite": {
+    "frame": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   },
+   "device-indicator (FM-1).aseprite": {
+    "frame": { "x": 0, "y": 12, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   },
+   "device-indicator (SMK-37).aseprite": {
+    "frame": { "x": 0, "y": 24, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   },
+   "device-indicator (New).aseprite": {
+    "frame": { "x": 0, "y": 36, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   },
+   "device-indicator (Old).aseprite": {
+    "frame": { "x": 0, "y": 48, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   },
+   "device-indicator (All).aseprite": {
+    "frame": { "x": 0, "y": 60, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   },
+   "device-indicator (Pro).aseprite": {
+    "frame": { "x": 0, "y": 72, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   },
+   "device-indicator (Elite).aseprite": {
+    "frame": { "x": 0, "y": 84, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   },
+   "device-indicator (MKE).aseprite": {
+    "frame": { "x": 0, "y": 96, "w": 48, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 12 },
+    "sourceSize": { "w": 48, "h": 12 },
+    "duration": 100
+   }
+ },
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-x64",
+  "image": "device-indicator.png",
+  "format": "I8",
+  "size": { "w": 48, "h": 108 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "Background", "opacity": 255, "blendMode": "normal" },
+   { "name": "FM-1", "opacity": 255, "blendMode": "normal" },
+   { "name": "SMK-37", "opacity": 255, "blendMode": "normal" },
+   { "name": "New", "opacity": 255, "blendMode": "normal" },
+   { "name": "Old", "opacity": 255, "blendMode": "normal" },
+   { "name": "All", "opacity": 255, "blendMode": "normal" },
+   { "name": "Pro", "opacity": 255, "blendMode": "normal" },
+   { "name": "Elite", "opacity": 255, "blendMode": "normal" },
+   { "name": "MKE", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+  ]
+ }
+}

@@ -14,6 +14,9 @@ namespace fm1::platform {
 struct Config {
   std::string device_name = "Cardputer";
   std::string theme_blue = "#000083";
+  std::string library_device = "ALL";
+  std::string library_chip = "ALL";
+  std::string library_name;
   std::string ssid;
   std::string password;
 };

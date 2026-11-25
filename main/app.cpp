@@ -164,6 +164,7 @@ void App::run() {
       if (auto blue = platform::parse_hex_color(config->theme_blue)) {
         ui_.canvas().set_palette(3, *blue);
       }
+      load_filters(*config);
       if (!had_config) {
         state_.pane = ui::Pane::System;
         set_message("Welcome: press W in SYS to set up Wi-Fi", false, 15'000);
@@ -613,6 +614,58 @@ void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
     (void)storage_.write_text("fm1-card/logs/library.log", line);
   }
   dirty_ = true;
+}
+
+void App::load_filters(const platform::Config& config) {
+  state_.filter = config.library_name;
+  library_filter_.text = state_.filter;
+  library_filter_.device.reset();
+  library_filter_.chip = platform::ChipFilter::All;
+  library_filter_.variant = catalog::SmkVariant::All;
+  if (config.library_device == "FM1") {
+    library_filter_.device = catalog::Device::Fm1;
+  } else if (config.library_device == "SMK") {
+    library_filter_.device = catalog::Device::Smk37;
+  }
+  if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
+    if (config.library_chip == "PRO")
+      library_filter_.variant = catalog::SmkVariant::Pro;
+    else if (config.library_chip == "ELITE")
+      library_filter_.variant = catalog::SmkVariant::Elite;
+    else if (config.library_chip == "MKE")
+      library_filter_.variant = catalog::SmkVariant::Mke;
+  } else if (config.library_chip == "NEW") {
+    library_filter_.chip = platform::ChipFilter::New;
+  } else if (config.library_chip == "OLD") {
+    library_filter_.chip = platform::ChipFilter::Old;
+  }
+}
+
+void App::save_filters() {
+  if (!storage_.mounted()) return;
+  (void)platform::update_config(storage_, [&](platform::Config& config) {
+    config.library_name = state_.filter;
+    config.library_device = "ALL";
+    config.library_chip = "ALL";
+    if (!library_filter_.device) {
+      config.library_chip = library_filter_.chip == platform::ChipFilter::New   ? "NEW"
+                            : library_filter_.chip == platform::ChipFilter::Old ? "OLD"
+                                                                                : "ALL";
+      return;
+    }
+    if (*library_filter_.device == catalog::Device::Fm1) {
+      config.library_device = "FM1";
+      config.library_chip = library_filter_.chip == platform::ChipFilter::New   ? "NEW"
+                            : library_filter_.chip == platform::ChipFilter::Old ? "OLD"
+                                                                                : "ALL";
+      return;
+    }
+    config.library_device = "SMK";
+    config.library_chip = library_filter_.variant == catalog::SmkVariant::Pro     ? "PRO"
+                          : library_filter_.variant == catalog::SmkVariant::Elite ? "ELITE"
+                          : library_filter_.variant == catalog::SmkVariant::Mke   ? "MKE"
+                                                                                  : "ALL";
+  });
 }
 
 void App::sync_ui() {
@@ -1249,6 +1302,7 @@ void App::run_menu_action(int index) {
         local_offset_ = 0;
         state_.selection = 0;
         library_dirty_ = true;
+        save_filters();
       } else if (index == 1) {
         if (library_filter_.device && *library_filter_.device == catalog::Device::Smk37) {
           library_filter_.variant =
@@ -1266,6 +1320,7 @@ void App::run_menu_action(int index) {
         local_offset_ = 0;
         state_.selection = 0;
         library_dirty_ = true;
+        save_filters();
       } else if (index == 2) {
         state_.editing_filter = true;
       } else if (index == 3) {
@@ -1371,6 +1426,7 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
       }
       library_filter_.variant = catalog::SmkVariant::All;
       load_package_page(0);
+      save_filters();
       return;
     }
     if (event.character == 'c' || event.character == 'C') {
@@ -1387,6 +1443,7 @@ void App::handle_popup_key(const platform::KeyEvent& event) {
                                                                 : platform::ChipFilter::All;
       }
       load_package_page(0);
+      save_filters();
       return;
     }
     if (event.ctrl && (event.code == 0x52 || event.code == 0x51)) {
@@ -1513,6 +1570,7 @@ void App::handle_key(platform::KeyEvent event) {
       local_offset_ = 0;
       state_.selection = 0;
       library_dirty_ = true;
+      save_filters();
     } else if (event.code == 0x29) {
       state_.editing_filter = false;
       filter_refresh_ = true;
@@ -1521,6 +1579,7 @@ void App::handle_key(platform::KeyEvent event) {
       local_offset_ = 0;
       state_.selection = 0;
       library_dirty_ = true;
+      save_filters();
     } else if (event.code == 0x2A) {
       if (!state_.filter.empty()) state_.filter.pop_back();
     } else if (event.character >= 32 && event.character < 127) {

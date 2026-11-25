@@ -14,6 +14,7 @@
 #include "fm1/catalog.hpp"
 #include "fm1/clock.hpp"
 #include "fm1/platform/board.hpp"
+#include "fm1/platform/config.hpp"
 #include "fm1/platform/flash.hpp"
 #include "fm1/platform/library.hpp"
 #include "fm1/platform/net.hpp"
@@ -82,6 +83,8 @@ class App {
   void open_packages(int slot);
   void open_flash_targets(int local_index);
   void start_debrick();
+  void load_filters(const platform::Config& config);
+  void save_filters();
   std::vector<int> compatible_targets(const platform::LocalPackage& package,
                                       bool include_unidentified) const;
   void load_package_page(std::size_t offset);

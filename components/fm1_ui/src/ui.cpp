@@ -4,6 +4,8 @@
 #include <array>
 #include <cstdio>
 
+#include "device_indicator.hpp"
+
 namespace fm1::ui {
 namespace {
 
@@ -152,6 +154,40 @@ void draw_right_text(Canvas& canvas, int left, int right, int y, std::string tex
   const int width = static_cast<int>(text.size()) * Canvas::kCellW;
   const int x = std::max(left, right - width);
   canvas.draw_text(x, y, text, color, right);
+}
+
+void draw_device_indicator(Canvas& canvas, int x, int y, const UiState& state) {
+  auto frame = [&](int index, bool transparent) {
+    for (int row = 0; row < 12; ++row) {
+      for (int col = 0; col < 48; ++col) {
+        const char c = kDeviceIndicator[index][row][col];
+        if (transparent && c == '.') continue;
+        const uint8_t color =
+            c == '.' ? 0 : static_cast<uint8_t>(c <= '9' ? c - '0' : c - 'a' + 10);
+        canvas.pixel(x + col, y + row, color);
+      }
+    }
+  };
+
+  frame(kIndicatorBackground, false);
+  if (state.device_filter == "FM1") {
+    frame(kIndicatorFm1, true);
+  } else if (state.device_filter == "SMK") {
+    frame(kIndicatorSmk37, true);
+  }
+
+  int chip = kIndicatorAll;
+  if (state.chip_filter == "NEW")
+    chip = kIndicatorNew;
+  else if (state.chip_filter == "OLD")
+    chip = kIndicatorOld;
+  else if (state.chip_filter == "PRO")
+    chip = kIndicatorPro;
+  else if (state.chip_filter == "ELITE")
+    chip = kIndicatorElite;
+  else if (state.chip_filter == "MKE")
+    chip = kIndicatorMke;
+  frame(chip, true);
 }
 
 }  // namespace
@@ -310,19 +346,18 @@ void Ui::library(const UiState& state, int, int rows) {
     canvas_.fill(0, 22, 240, 11, 1);
     canvas_.textf(0, 2, 0, "/%s_", state.filter.c_str());
   } else {
+    std::string status;
     if (!state.sd_mounted) {
-      canvas_.textf(0, 2, 2, "LIB %zu SD NO %s %s", state.catalog_total,
-                    state.device_filter.c_str(), state.chip_filter.c_str());
+      status = "LIB " + std::to_string(state.catalog_total) + " SD NO";
     } else if (state.local_total > state.local.size()) {
-      canvas_.textf(0, 2, 2, "LIB %zu SD %zu/%zu %s %s", state.catalog_total, state.local.size(),
-                    state.local_total, state.device_filter.c_str(), state.chip_filter.c_str());
+      status = "LIB " + std::to_string(state.catalog_total) + " SD " +
+               std::to_string(state.local.size()) + "/" + std::to_string(state.local_total);
     } else {
-      canvas_.textf(0, 2, 2, "LIB %zu SD ok %s %s", state.catalog_total,
-                    state.device_filter.c_str(), state.chip_filter.c_str());
+      status = "LIB " + std::to_string(state.catalog_total) + " SD ok";
     }
-    if (!state.filter.empty()) {
-      canvas_.text_clipped(30, 2, 10, "/" + state.filter, 5);
-    }
+    if (!state.filter.empty()) status += " /" + state.filter;
+    canvas_.text_clipped(0, 2, 32, status, 2);
+    draw_device_indicator(canvas_, 192, 21, state);
   }
   if (total == 0) {
     canvas_.text(1, 4, "No packages or catalog.", 1);
