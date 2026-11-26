@@ -81,6 +81,14 @@ table and `SHA256SUMS`. Tags matching `v*` build and publish automatically via
 - A microSD card (FAT32/exFAT).
 - A USB-C to USB-A adapter/cable for the hub's upstream port.
 
+## M5Launcher
+
+`fm1-card` is already an ordinary ESP-IDF application image, so it can live
+alongside other apps under M5Launcher. Install the release asset named
+`fm1-card-<version>-app.bin` from the SD card; do not use the `-full.bin`
+asset there. M5Launcher supplies its own bootloader and partition table, and
+`fm1-card` keeps its files and settings on the SD card.
+
 ## Build
 
 ```sh

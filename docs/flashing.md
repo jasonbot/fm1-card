@@ -7,6 +7,13 @@ Two different chips, two different protocols. Keep them separate in your head:
 | FM-1 / SMK-37 **application** | USB-MIDI SysEx | normal / rescue flash |
 | FM-1 / SMK-37 **bootloader** | JieLi ROM USB disk (MSC + SCSI) | download mode + rescue bootloader |
 
+## M5Launcher
+
+M5Launcher installs an application image, not a merged factory image. Use
+`fm1-card-<version>-app.bin` from `dist/` (or the release asset of that name)
+through `SD > Install`; it is placed in an OTA app partition. The merged image
+and bootloader/partition assets are only for direct `esptool` flashing.
+
 ## Package format (`*.fwsc`)
 
 The first 20 blocks are 0x30 bytes; byte 0x2F of each block is an identity

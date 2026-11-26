@@ -61,6 +61,11 @@ jobs:
               write-flash 0x0 fm1-card-${{ github.ref_name }}-full.bin
             ```
 
+            Or install `fm1-card-${{ github.ref_name }}-app.bin` from M5Launcher's
+            SD installer to keep it alongside other apps. It is an ordinary
+            application image; M5Launcher supplies the bootloader and partition
+            table.
+
             Or flash the app only at `0x10000` if the bootloader and partition table
             are already current:
 
