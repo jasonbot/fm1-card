@@ -178,7 +178,7 @@ void App::run() {
              .password = {},
              .name = {}});
 
-  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->ui_loop(); }, "fm1-ui", 8192,
+  xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->ui_loop(); }, "fm1-ui", 12288,
                           this, 4, nullptr, 1);
   xTaskCreatePinnedToCore([](void* arg) { static_cast<App*>(arg)->clock_loop(); }, "fm1-clock",
                           4096, this, 5, nullptr, 1);
@@ -522,11 +522,15 @@ void App::net_loop() {
 void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
   if (show_wait) show_waiting("READING LIBRARY");
   if (!installed_metadata_valid_) {
+    installed_metadata_.clear();
+    installed_metadata_.shrink_to_fit();
     installed_metadata_ =
         library_.local_metadata().value_or(std::vector<platform::LocalMetadata>{});
     installed_metadata_valid_ = true;
   }
   if (reload_local) {
+    state_.local.clear();
+    state_.local.shrink_to_fit();
     std::size_t local_total = 0;
     auto local_page = library_.local_packages_page(local_offset_, 32, &local_total, state_.filter)
                           .value_or(std::vector<platform::LocalPackage>{});
@@ -553,6 +557,8 @@ void App::refresh_library(bool keep_shift, bool show_wait, bool reload_local) {
   catalog_total_ = total.value_or(0);
   const std::size_t page = 20;
   if (!keep_shift && catalog_offset_ > catalog_total_) catalog_offset_ = 0;
+  state_.catalog.clear();
+  state_.catalog.shrink_to_fit();
   auto entries = library_.page(library_filter_, catalog_offset_, page, installed_metadata_);
   state_.catalog = entries.value_or(std::vector<catalog::Entry>{});
   state_.catalog_total = catalog_total_;

@@ -302,9 +302,15 @@ Result<void> build_boot_area(std::span<const uint8_t> flash, std::span<const uin
   if (wl82::crc16(key.subspan(0, 32)) != u16le(key, 32)) {
     return fail("the unit's chip-key record is damaged");
   }
+  std::array<uint8_t, kBootAt> prefix{};
+  std::copy_n(flash.begin(), kBootAt, prefix.begin());
+  std::array<uint8_t, kConfigKey> key_bytes{};
+  std::copy_n(key.begin(), key.size(), key_bytes.begin());
 
+  // `area` may alias `flash` for the on-device build, so all input bytes
+  // needed after the fill are copied above.
   std::fill_n(area.begin(), kBootArea, 0xFF);
-  std::copy_n(flash.begin(), kBootAt, area.begin());
+  std::copy(prefix.begin(), prefix.end(), area.begin());
 
   auto entry0 = table[0].raw;
   put16(entry0, 2, wl82::crc16(bootloader));
@@ -313,7 +319,7 @@ Result<void> build_boot_area(std::span<const uint8_t> flash, std::span<const uin
   const auto encrypted0 = encrypt(entry0, 0xFFFF);
   std::copy(encrypted0.begin(), encrypted0.end(), area.begin() + 0x20);
 
-  std::vector<uint8_t> config(key.begin(), key.end());
+  std::vector<uint8_t> config(key_bytes.begin(), key_bytes.end());
   config.insert(config.end(), kConfigSettings.begin(), kConfigSettings.end());
   auto entry1 = table[1].raw;
   put16(entry1, 2, wl82::crc16(config));

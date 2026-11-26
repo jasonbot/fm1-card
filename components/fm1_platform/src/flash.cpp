@@ -154,7 +154,6 @@ std::string board_key_for(std::uint32_t flash_id) {
 }
 
 std::array<std::uint8_t, flash::kBootArea> g_boot_area{};
-std::array<std::uint8_t, flash::kBootArea> g_boot_build{};
 
 Result<void> read_boot_area(wl82::Loader& loader) {
   for (std::size_t at = 0; at < g_boot_area.size(); at += kSector) {
@@ -805,17 +804,21 @@ Result<void> FlashWorker::install_bootloader(const FlashJob& job) {
     bootloader = bytes(_binary_bootloader_smk37_boot_start, _binary_bootloader_smk37_boot_end);
   }
 
-  auto area = flash::build_boot_area(g_boot_area, bootloader, g_boot_build);
+  auto area = flash::build_boot_area(g_boot_area, bootloader, g_boot_area);
   if (!area) return area;
+  const uint32_t built =
+      crc32_update(0, std::span<const uint8_t>(g_boot_area.data(), g_boot_area.size()));
   publish("erasing the boot area", 0);
   auto erased = loader.erase(0, flash::kBootArea);
   if (!erased) return erased;
   publish("writing the boot area", 50);
-  auto written = loader.write(0, g_boot_build);
+  auto written = loader.write(0, g_boot_area);
   if (!written) return written;
   publish("verifying the boot area", 90);
   if (auto read = read_boot_area(loader); !read) return read;
-  if (g_boot_area != g_boot_build) {
+  const uint32_t actual =
+      crc32_update(0, std::span<const uint8_t>(g_boot_area.data(), g_boot_area.size()));
+  if (actual != built) {
     return fail("the boot area did not verify; do not power off, reconnect and retry");
   }
   publish("rescue bootloader installed", 100);
